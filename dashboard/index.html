@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<title>My Home</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="My Home">
+<meta name="application-name" content="My Home">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg:#eef1f6; --tile:#ffffff; --tile-icon:#e6eaf1;
+    --on-tile:#fff2cc; --on-icon:#ffcf47; --on-text:#4a3a00;
+    --text:#1f1f24; --text2:#5f6368;
+    --accent:#0b57d0;
+    --track:#c2c6cf; --danger:#c5221f;
+    --radius:22px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0f1216; --tile:#1c1f24; --tile-icon:#2c3038;
+      --on-tile:#3a3212; --on-icon:#f7cf5a; --on-text:#ffe9a8;
+      --text:#e3e3e6; --text2:#9aa0a6;
+      --accent:#a8c7fa;
+      --track:#484c54; --danger:#f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; padding: 12px 16px 16px;
+    display: flex; flex-direction: column; overflow: hidden;
+    color: var(--text); background: var(--bg);
+    font-family: "Roboto", "Google Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+  body.scrolly { overflow-y: auto; height: auto; min-height: 100vh; }
+
+  /* ---------- header + weather strip ---------- */
+  header {
+    display: flex; align-items: center; gap: 20px;
+    padding: 4px 4px 14px; flex: none;
+  }
+  .hleft { min-width: 0; }
+  header h1 { font-size: 24px; margin: 0; font-weight: 500; letter-spacing: 0; white-space: nowrap; }
+  #date { color: var(--text2); font-size: 12px; margin-top: 1px; font-weight: 400; white-space: nowrap; }
+
+  #weather {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    gap: 16px; min-width: 0;
+  }
+  .wicon { font-size: 34px; line-height: 1; flex: none; }
+  .wmain { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .wtemp { font-size: 36px; font-weight: 500; letter-spacing: -1px; line-height: 1; flex: none; }
+  .wcol { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .wcond { font-size: 13px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wmeta { display: flex; gap: 12px; font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .wmeta b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .pill {
+    display: flex; align-items: baseline; gap: 5px; flex: none;
+    background: var(--tile); border-radius: 18px; padding: 8px 15px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.10);
+    font-size: 14px;
+  }
+  .pill b { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .pill .pill-sub { font-size: 11px; color: var(--text2); }
+
+  .hright { display: flex; align-items: center; gap: 10px; flex: none; }
+  #clock { color: var(--text2); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  #status { font-size: 12px; color: var(--danger); font-weight: 500; }
+  #editBtn {
+    border: none; cursor: pointer; background: var(--tile); color: var(--text);
+    font-size: 13px; font-weight: 500; padding: 8px 16px; border-radius: 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.12); font-family: inherit;
+  }
+  #editBtn.active { background: var(--accent); color: #fff; }
+
+  /* ---------- adaptive no-scroll grid ---------- */
+  .grid {
+    flex: 1; min-height: 0;
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  body.scrolly .grid { flex: none; grid-auto-rows: auto; }
+
+  .card {
+    position: relative; background: var(--tile); border: none; border-radius: var(--radius);
+    padding: 13px 14px; display: flex; flex-direction: column; gap: 9px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+    transition: background .25s, color .25s, transform .12s;
+    min-height: 0; min-width: 0; overflow: hidden;
+  }
+  .card.is-on { background: var(--on-tile); }
+  .card.is-on .name { color: var(--on-text); }
+  .card.is-on .sub, .card.is-on .lbl, .card.is-on .val, .card.is-on .su { color: var(--on-text); opacity: .7; }
+  .card.hidden-item { opacity: .45; }
+
+  .card-head { display: flex; align-items: center; gap: 11px; flex: none; }
+  .card-head.tappable { cursor: pointer; border-radius: 14px; margin: -4px; padding: 4px; }
+  .card-head.tappable:active { transform: scale(.97); }
+  .icon {
+    width: 40px; height: 40px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 19px;
+    background: var(--tile-icon); transition: background .25s;
+  }
+  .is-on .icon { background: var(--on-icon); }
+  .titles { flex: 1; min-width: 0; }
+  .name {
+    font-size: 14.5px; font-weight: 500; letter-spacing: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sub { font-size: 12.5px; color: var(--text2); margin-top: 1px; font-weight: 400;
+         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .card-body {
+    display: flex; flex-direction: column; gap: 9px;
+    flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
+    justify-content: space-evenly;
+  }
+  .card-body::-webkit-scrollbar { display: none; }
+
+  /* sliders */
+  .row { display: flex; align-items: center; gap: 9px; flex: none; }
+  .lbl { font-size: 12.5px; color: var(--text2); width: 68px; flex: none; font-weight: 400; }
+  .val { font-size: 12.5px; color: var(--text2); width: 40px; text-align: right; flex: none; font-variant-numeric: tabular-nums; font-weight: 500; }
+  input[type=range] {
+    flex: 1; appearance: none; -webkit-appearance: none;
+    height: 28px; background: transparent; margin: 0; --fill: 50%;
+    min-width: 0;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 7px; border-radius: 4px;
+    background: linear-gradient(to right, var(--accent) 0 var(--fill), var(--track) var(--fill) 100%);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); margin-top: -5.5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  }
+  input[type=range].ct::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, #bcd9ff, #fff3da, #ffb84d) !important;
+  }
+
+  /* color swatches */
+  .swatches { display: flex; gap: 7px; flex-wrap: wrap; flex: none; }
+  .swatch {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(0,0,0,.08); cursor: pointer; padding: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .1s;
+  }
+  .swatch:active { transform: scale(.88); }
+
+  /* segmented control */
+  .seg { display: flex; background: var(--tile-icon); border-radius: 16px; padding: 3px; gap: 2px; flex: none; }
+  .seg button {
+    flex: 1; border: none; background: transparent; color: inherit;
+    padding: 8px 4px; border-radius: 13px; font-size: 12.5px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+  }
+  .seg button.sel { background: var(--accent); color: #fff; }
+
+  /* steppers */
+  .stepper { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: flex-end; }
+  .stepper button {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: none; background: var(--tile-icon); color: inherit;
+    font-size: 19px; cursor: pointer; line-height: 1; font-family: inherit;
+  }
+  .stepper button:active { background: var(--track); }
+  .tval { font-size: 17px; font-weight: 500; width: 54px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  /* chips */
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; flex: none; }
+  .chip {
+    border: none; background: var(--tile-icon); color: inherit;
+    border-radius: 16px; padding: 8px 13px; font-size: 12.5px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+  }
+  .chip.on { background: var(--accent); color: #fff; }
+
+  /* sensors */
+  .sensors { display: flex; gap: 14px; flex-wrap: wrap; flex: none; }
+  .sensor { display: flex; align-items: baseline; gap: 5px; font-size: 13px; }
+  .sv { font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .su { font-size: 11px; color: var(--text2); font-weight: 400; }
+
+  /* edit mode */
+  .editing .ctl { pointer-events: none; opacity: .35; }
+  .edit-actions { display: none; gap: 8px; flex-wrap: wrap; }
+  .editing .edit-actions { display: flex; }
+  .edit-actions button {
+    border: none; border-radius: 14px; padding: 7px 12px;
+    font-size: 12.5px; font-weight: 500; cursor: pointer; font-family: inherit;
+    background: var(--tile-icon); color: inherit;
+  }
+  .edit-actions button.danger { color: var(--danger); }
+  .sel-circle {
+    display: none; position: absolute; top: 10px; right: 10px;
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid var(--track); background: transparent; cursor: pointer; padding: 0;
+  }
+  .editing .sel-circle.selectable { display: block; }
+  .sel-circle.sel { background: var(--accent); border-color: var(--accent); }
+  .sel-circle.sel::after { content: "✓"; color: #fff; font-size: 14px; font-weight: 600; display: grid; place-items: center; height: 100%; }
+  .editing .card.selected { outline: 2.5px solid var(--accent); transform: scale(.98); }
+
+  #combineBar[hidden] { display: none; }
+  #combineBar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: flex; justify-content: center;
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); pointer-events: none;
+  }
+  #combineBar button {
+    pointer-events: auto; border: none; border-radius: 24px; padding: 14px 28px;
+    background: var(--accent); color: #fff; font-size: 16px; font-weight: 500;
+    cursor: pointer; font-family: inherit; box-shadow: 0 6px 18px rgba(0,0,0,.3);
+  }
+
+  /* modal */
+  #overlay {
+    position: fixed; inset: 0; z-index: 100;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.45);
+  }
+  #overlay.open { display: flex; }
+  #modal {
+    width: min(92vw, 380px); background: var(--tile);
+    border-radius: 24px; padding: 22px; box-shadow: 0 20px 50px rgba(0,0,0,.4);
+  }
+  #modal h3 { margin: 0 0 14px; font-size: 17px; font-weight: 500; }
+  #modalInput {
+    width: 100%; border: 1px solid var(--track); outline: none;
+    background: transparent; color: var(--text);
+    border-radius: 12px; padding: 13px 14px; font-size: 16px; font-family: inherit;
+  }
+  #modalInput:focus { border-color: var(--accent); }
+  .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-btns button {
+    flex: 1; border: none; border-radius: 20px; padding: 13px;
+    font-size: 15px; font-weight: 500; cursor: pointer; font-family: inherit;
+  }
+  #modalCancel { background: var(--tile-icon); color: var(--text); }
+  #modalSave { background: var(--accent); color: #fff; }
+
+  /* narrow / portrait fallback: allow scrolling, wrap weather */
+  @media (max-width: 700px) {
+    header { flex-wrap: wrap; }
+    #weather { order: 3; width: 100%; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+    #weather::-webkit-scrollbar { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="hleft">
+    <h1>My Home</h1>
+    <div id="date"></div>
+  </div>
+  <div id="weather">
+    <span class="wicon" id="wIcon">⛅</span>
+    <div class="wmain">
+      <span class="wtemp" id="wTemp">--°</span>
+      <div class="wcol">
+        <span class="wcond" id="wCond">Loading…</span>
+        <div class="wmeta">
+          <span>⬆️ <b id="wHi">--</b>°</span>
+          <span>⬇️ <b id="wLo">--</b>°</span>
+          <span>💧 <b id="wHum">--</b>%</span>
+          <span>💨 <b id="wWind">--</b> km/h</span>
+        </div>
+      </div>
+    </div>
+    <div class="pill">🏠 <b id="wIndoor">--</b>° <span class="pill-sub">inside</span></div>
+  </div>
+  <div class="hright">
+    <span id="status"></span>
+    <span id="clock"></span>
+    <button id="editBtn">Edit</button>
+  </div>
+</header>
+<div class="grid" id="grid"></div>
+
+<div id="combineBar" hidden>
+  <button id="combineBtn">Combine into one tile</button>
+</div>
+
+<div id="overlay">
+  <div id="modal">
+    <h3>Rename</h3>
+    <input id="modalInput" dir="auto" maxlength="40" autocomplete="off">
+    <div class="modal-btns">
+      <button id="modalCancel">Cancel</button>
+      <button id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $grid = document.getElementById('grid');
+const $status = document.getElementById('status');
+const $editBtn = document.getElementById('editBtn');
+const $combineBar = document.getElementById('combineBar');
+
+const T = {
+  NAME:'23', ON:'25', BRIGHT:'8', HUE:'13', SAT:'2F', CT:'CE',
+  ACTIVE:'B0', CUR_HC:'B1', TGT_HC:'B2',
+  CUR_TEMP:'11', COOL_TH:'D', HEAT_TH:'12', TGT_TEMP:'35',
+  HUMID:'10', AIRQ:'95', PM25:'C6',
+  TGT_AP:'A8', CUR_AP:'A9', SPEED:'29', SWING:'B6',
+  OCC:'71', MOTION:'22', CONTACT:'6A', FILTER:'AB',
+};
+const SVC = { INFO:'3E', PROTO:'A2', LIGHT:'43', SWITCH:'49', FAN:'40', FAN2:'B7',
+  HC:'BC', AP:'BB', AIRQ:'8D', TEMP:'8A', HUM:'82', OCC:'86', MOTION:'85',
+  CONTACT:'80', FILTER:'BA', OUTLET:'47' };
+
+const AIRQ_LABELS = ['—','Excellent','Good','Fair','Inferior','Poor'];
+const SWATCH_PRESETS = [
+  {h:0,s:0,c:'#fff8e7',t:'White'}, {h:35,s:60,c:'#ffcf8a'}, {h:0,s:85,c:'#ff5252'},
+  {h:30,s:90,c:'#ff9230'}, {h:60,s:80,c:'#ffe44d'}, {h:120,s:75,c:'#5be65b'},
+  {h:200,s:80,c:'#3ec1ff'}, {h:270,s:75,c:'#b266ff'}, {h:320,s:75,c:'#ff5ec4'},
+];
+
+let settings = { names:{}, groups:[], hidden:[], shellies:[] };
+let lastData = null;
+let shellyData = [];
+let lastWeather = null;
+let built = false;
+let editMode = false;
+const selected = new Set();   // item keys selected for combining
+const touched = new Map();    // "aid.iid" -> ts of last local change
+const TOUCH_HOLD_MS = 5000;
+
+function key(aid, iid) { return aid + '.' + iid; }
+
+/* ---------- API ---------- */
+
+async function postChars(chars) {
+  for (const c of chars) touched.set(key(c.aid, c.iid), Date.now());
+  try {
+    await fetch('/api/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ characteristics: chars }),
+    });
+  } catch (e) { /* next poll restores truth */ }
+}
+function send(targets, value) { postChars(targets.map(t => ({ aid: t.aid, iid: t.iid, value }))); }
+
+async function saveSettings() {
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  rebuild();
+}
+
+/* ---------- model ---------- */
+
+function findChar(svc, type) { return svc.characteristics.find(c => c.type === type); }
+function svcName(svc, fallback) {
+  const n = findChar(svc, T.NAME);
+  return (n && n.value) || fallback;
+}
+function origName(acc) {
+  const info = acc.services.find(s => s.type === SVC.INFO);
+  return info ? svcName(info, 'Accessory ' + acc.aid) : 'Accessory ' + acc.aid;
+}
+
+// items: groups (>=2 found members) + remaining single accessories
+function buildItems(data) {
+  const accs = data.accessories.filter(a => a.aid !== 1);
+  const byOrig = {};
+  accs.forEach(a => { byOrig[origName(a)] = a; });
+  const used = new Set();
+  const items = [];
+
+  for (const g of settings.groups || []) {
+    const members = (g.members || []).map(n => byOrig[n]).filter(Boolean);
+    if (members.length < 2) continue;
+    members.forEach(m => used.add(m.aid));
+    const k = 'g:' + [...g.members].sort().join('|');
+    items.push({ key: k, isGroup: true, group: g, members,
+      name: settings.names[k] || g.name || 'Group' });
+  }
+  for (const a of accs) {
+    if (used.has(a.aid)) continue;
+    const orig = origName(a);
+    items.push({ key: 'a:' + orig, isGroup: false, orig, members: [a],
+      name: settings.names['a:' + orig] || orig });
+  }
+  for (const dev of shellyData) {
+    if (dev.error || !dev.components) continue;
+    for (const c of dev.components) {
+      const k = 's:' + dev.ip + ':' + c.id;
+      items.push({ key: k, isShelly: true, ip: dev.ip, comp: c,
+        name: settings.names[k] || c.name || dev.name });
+    }
+  }
+  return items;
+}
+
+function itemIcon(item) {
+  if (item.isShelly) return '💡';
+  const types = item.members[0].services.map(s => s.type);
+  if (types.includes(SVC.LIGHT)) return '💡';
+  if (types.includes(SVC.HC)) return '❄️';
+  if (types.includes(SVC.AP)) return '🌬️';
+  if (types.includes(SVC.FAN) || types.includes(SVC.FAN2)) return '🌀';
+  if (types.includes(SVC.OUTLET)) return '🔌';
+  if (types.includes(SVC.SWITCH)) return '🎚️';
+  if (types.includes(SVC.TEMP) || types.includes(SVC.HUM)) return '🌡️';
+  return '📦';
+}
+
+// find the matching characteristic in each member: same service type,
+// same occurrence index of that service type, same characteristic type
+function targetsFor(item, svcType, svcOcc, charType) {
+  const out = [];
+  for (const m of item.members) {
+    let occ = 0;
+    for (const s of m.services) {
+      if (s.type !== svcType) continue;
+      if (occ === svcOcc) {
+        const c = findChar(s, charType);
+        if (c) out.push({ aid: m.aid, iid: c.iid });
+        break;
+      }
+      occ++;
+    }
+  }
+  return out;
+}
+
+/* ---------- DOM builders ---------- */
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+// tapping the card head toggles main power; the tile tint shows the state
+function makeHeadToggle(card, head, targets, isActiveType) {
+  head.classList.add('tappable');
+  card.dataset.mainK = key(targets[0].aid, targets[0].iid);
+  head.onclick = (e) => {
+    if (editMode) return;
+    const on = !card.classList.contains('is-on');
+    card.classList.toggle('is-on', on);
+    send(targets, isActiveType ? (on ? 1 : 0) : on);
+  };
+}
+
+function makeChip(targets, label, isActiveType) {
+  const chip = el('button', 'chip');
+  chip.dir = 'auto';
+  chip.textContent = label;
+  chip.dataset.k = key(targets[0].aid, targets[0].iid);
+  chip.onclick = () => {
+    const v = !chip.classList.contains('on');
+    chip.classList.toggle('on', v);
+    send(targets, isActiveType ? (v ? 1 : 0) : v);
+  };
+  return chip;
+}
+
+function setFill(input) {
+  const min = Number(input.min), max = Number(input.max), v = Number(input.value);
+  input.style.setProperty('--fill', (max > min ? ((v - min) / (max - min)) * 100 : 0) + '%');
+}
+
+function makeSlider(targets, ch, label, unit, cls) {
+  const row = el('div', 'row');
+  row.append(el('span', 'lbl', label));
+  const input = document.createElement('input');
+  input.type = 'range';
+  if (cls) input.className = cls;
+  input.min = ch.minValue ?? 0;
+  input.max = ch.maxValue ?? 100;
+  input.step = ch.minStep ?? 1;
+  input.dataset.k = key(targets[0].aid, targets[0].iid);
+  const val = el('span', 'val');
+  input.oninput = () => {
+    for (const t of targets) touched.set(key(t.aid, t.iid), Date.now());
+    val.textContent = input.value + unit;
+    setFill(input);
+  };
+  input.onchange = () => send(targets, Number(input.value));
+  row.append(input, val);
+  return row;
+}
+
+function makeSeg(targets, ch, labels) {
+  const seg = el('div', 'seg ctl');
+  seg.dataset.k = key(targets[0].aid, targets[0].iid);
+  const valid = ch['valid-values'] || Object.keys(labels).map(Number);
+  for (const v of valid) {
+    if (!(v in labels)) continue;
+    const b = el('button', '', labels[v]);
+    b.dataset.v = v;
+    b.onclick = () => {
+      seg.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
+      send(targets, v);
+    };
+    seg.append(b);
+  }
+  return seg;
+}
+
+function makeStepper(targets, ch, label) {
+  const row = el('div', 'row');
+  row.append(el('span', 'lbl', label));
+  const st = el('div', 'stepper');
+  const minus = el('button', '', '−');
+  const tval = el('span', 'tval');
+  tval.dataset.k = key(targets[0].aid, targets[0].iid);
+  const plus = el('button', '', '+');
+  const step = ch.minStep && ch.minStep >= 0.5 ? ch.minStep : 1;
+  const bump = (d) => {
+    let v = parseFloat(tval.dataset.cur || ch.value || 0) + d * step;
+    v = Math.min(ch.maxValue ?? 100, Math.max(ch.minValue ?? 0, v));
+    v = Math.round(v * 10) / 10;
+    tval.dataset.cur = v;
+    tval.textContent = v + '°';
+    send(targets, v);
+  };
+  minus.onclick = () => bump(-1);
+  plus.onclick = () => bump(1);
+  st.append(minus, tval, plus);
+  row.append(st);
+  return row;
+}
+
+function makeSensor(aid, ch, icon, unit, fmt) {
+  const s = el('div', 'sensor');
+  const sv = el('span', 'sv');
+  sv.dataset.k = key(aid, ch.iid);
+  if (fmt) sv.dataset.fmt = fmt;
+  s.append(el('span', '', icon), sv, el('span', 'su', unit));
+  return s;
+}
+
+function addEditActions(card, item) {
+  const actions = el('div', 'edit-actions');
+  const renameBtn = el('button', '', '✏️ Rename');
+  renameBtn.onclick = () => openRename(item);
+  actions.append(renameBtn);
+  const hideBtn = el('button', '', isHidden(item) ? '👁 Show' : '🚫 Hide');
+  hideBtn.onclick = () => toggleHidden(item);
+  actions.append(hideBtn);
+  if (item.isGroup) {
+    const ungroupBtn = el('button', 'danger', 'Ungroup');
+    ungroupBtn.onclick = () => ungroup(item);
+    actions.append(ungroupBtn);
+  }
+  card.append(actions);
+}
+
+function buildShellyCard(item) {
+  const card = el('div', 'card');
+  card.id = 'item-' + CSS.escape(item.key);
+  card.dataset.key = item.key;
+  if (isHidden(item)) card.classList.add('hidden-item');
+
+  const head = el('div', 'card-head tappable');
+  head.append(el('div', 'icon', '💡'));
+  const titles = el('div', 'titles');
+  const nameEl = el('div', 'name');
+  nameEl.dir = 'auto';
+  nameEl.textContent = item.name;
+  const sub = el('div', 'sub');
+  sub.dataset.sub = item.key;
+  titles.append(nameEl, sub);
+  head.append(titles);
+
+  head.onclick = () => {
+    if (editMode) return;
+    const on = !card.classList.contains('is-on');
+    card.classList.toggle('is-on', on);
+    touched.set('sk:' + item.key, Date.now());
+    fetch('/api/shelly/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: item.ip, id: item.comp.id, type: item.comp.type, state: on }),
+    }).catch(() => {});
+  };
+  card.append(head);
+  addEditActions(card, item);
+  return card;
+}
+
+function buildCard(item) {
+  if (item.isShelly) return buildShellyCard(item);
+  const acc = item.members[0];
+  const card = el('div', 'card');
+  card.id = 'item-' + CSS.escape(item.key);
+  card.dataset.key = item.key;
+  if (isHidden(item)) card.classList.add('hidden-item');
+
+  const head = el('div', 'card-head');
+  head.append(el('div', 'icon', itemIcon(item)));
+  const titles = el('div', 'titles');
+  const nameEl = el('div', 'name');
+  nameEl.dir = 'auto';
+  nameEl.textContent = item.name;
+  const sub = el('div', 'sub');
+  sub.dataset.sub = item.key;
+  titles.append(nameEl, sub);
+  head.append(titles);
+  card.append(head);
+
+  const body = el('div', 'card-body ctl');
+  const chips = el('div', 'chips');
+  const sensors = el('div', 'sensors');
+  let mainToggleSet = false;
+  const occCount = {};
+
+  for (const svc of acc.services) {
+    if (svc.type === SVC.INFO || svc.type === SVC.PROTO) continue;
+    const svcOcc = occCount[svc.type] ?? 0;
+    occCount[svc.type] = svcOcc + 1;
+    const tg = (chType) => targetsFor(item, svc.type, svcOcc, chType);
+
+    const on = findChar(svc, T.ON);
+    const active = findChar(svc, T.ACTIVE);
+
+    if ((svc.type === SVC.SWITCH || svc.type === SVC.OUTLET || svc.type === SVC.FAN) && mainToggleSet && on) {
+      chips.append(makeChip(tg(T.ON), svcName(svc, 'Switch'), false));
+      continue;
+    }
+
+    const tgl = on || active;
+    if (tgl && !mainToggleSet) {
+      makeHeadToggle(card, head, tg(on ? T.ON : T.ACTIVE), !!active && !on);
+      mainToggleSet = true;
+    } else if (tgl && mainToggleSet && svc.type === SVC.LIGHT) {
+      chips.append(makeChip(tg(T.ON), svcName(svc, 'Light'), false));
+    }
+
+    const bright = findChar(svc, T.BRIGHT);
+    if (bright) body.append(makeSlider(tg(T.BRIGHT), bright, 'Brightness', '%'));
+    const speed = findChar(svc, T.SPEED);
+    if (speed) body.append(makeSlider(tg(T.SPEED), speed, 'Speed', '%'));
+    const ct = findChar(svc, T.CT);
+    if (ct) body.append(makeSlider(tg(T.CT), ct, 'Warmth', '', 'ct'));
+
+    const hue = findChar(svc, T.HUE), sat = findChar(svc, T.SAT);
+    if (hue && sat) {
+      const hueT = tg(T.HUE), satT = tg(T.SAT);
+      const sw = el('div', 'swatches');
+      for (const p of SWATCH_PRESETS) {
+        const b = el('button', 'swatch');
+        b.style.background = p.c;
+        b.title = p.t || '';
+        b.onclick = () => postChars([
+          ...hueT.map(t => ({ aid: t.aid, iid: t.iid, value: p.h })),
+          ...satT.map(t => ({ aid: t.aid, iid: t.iid, value: p.s })),
+        ]);
+        sw.append(b);
+      }
+      body.append(sw);
+    }
+
+    const tgtHC = findChar(svc, T.TGT_HC);
+    if (tgtHC) body.append(makeSeg(tg(T.TGT_HC), tgtHC, {0:'Auto',1:'Heat',2:'Cool'}));
+    const tgtAP = findChar(svc, T.TGT_AP);
+    if (tgtAP) body.append(makeSeg(tg(T.TGT_AP), tgtAP, {0:'Manual',1:'Auto'}));
+
+    const coolTh = findChar(svc, T.COOL_TH);
+    if (coolTh) body.append(makeStepper(tg(T.COOL_TH), coolTh, 'Cool to'));
+    const heatTh = findChar(svc, T.HEAT_TH);
+    if (heatTh) body.append(makeStepper(tg(T.HEAT_TH), heatTh, 'Heat to'));
+    const tgtTemp = findChar(svc, T.TGT_TEMP);
+    if (tgtTemp) body.append(makeStepper(tg(T.TGT_TEMP), tgtTemp, 'Target'));
+
+    const swing = findChar(svc, T.SWING);
+    if (swing) chips.append(makeChip(tg(T.SWING), 'Swing', true));
+
+    const curT = findChar(svc, T.CUR_TEMP);
+    if (curT) sensors.append(makeSensor(acc.aid, curT, '🌡️', '°C'));
+    const hum = findChar(svc, T.HUMID);
+    if (hum) sensors.append(makeSensor(acc.aid, hum, '💧', '%'));
+    const airq = findChar(svc, T.AIRQ);
+    if (airq) sensors.append(makeSensor(acc.aid, airq, '🍃', '', 'airq'));
+    const pm = findChar(svc, T.PM25);
+    if (pm) sensors.append(makeSensor(acc.aid, pm, '🫧', 'µg/m³'));
+    const occ = findChar(svc, T.OCC);
+    if (occ) sensors.append(makeSensor(acc.aid, occ, '⏱️', '', 'occ'));
+    const mot = findChar(svc, T.MOTION);
+    if (mot) sensors.append(makeSensor(acc.aid, mot, '🚶', '', 'occ'));
+    const filt = findChar(svc, T.FILTER);
+    if (filt) sensors.append(makeSensor(acc.aid, filt, '🧰', '% filter'));
+  }
+
+  if (sensors.children.length) body.append(sensors);
+  if (chips.children.length) body.append(chips);
+  if (body.children.length) card.append(body);
+
+  addEditActions(card, item);
+
+  if (!item.isGroup) {
+    const selBtn = el('button', 'sel-circle selectable');
+    selBtn.onclick = () => {
+      if (selected.has(item.key)) selected.delete(item.key);
+      else selected.add(item.key);
+      selBtn.classList.toggle('sel', selected.has(item.key));
+      card.classList.toggle('selected', selected.has(item.key));
+      updateCombineBar();
+    };
+    card.append(selBtn);
+  }
+
+  return card;
+}
+
+/* ---------- adaptive no-scroll grid ---------- */
+
+function fitGrid() {
+  const n = $grid.children.length;
+  if (!n) return;
+  // portrait / narrow: fall back to a normal scrolling grid
+  if (window.innerWidth < window.innerHeight || window.innerWidth < 700) {
+    document.body.classList.add('scrolly');
+    $grid.style.gridTemplateColumns = '';
+    $grid.style.gridTemplateRows = '';
+    return;
+  }
+  document.body.classList.remove('scrolly');
+  const gap = 12;
+  const W = $grid.clientWidth, H = $grid.clientHeight;
+  let best = null;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const tw = (W - gap * (cols - 1)) / cols;
+    const th = (H - gap * (rows - 1)) / rows;
+    if (tw < 170) continue;
+    // prefer tiles close to a 0.95 width/height ratio
+    const score = -Math.abs(Math.log((tw / th) / 0.95));
+    if (!best || score > best.score) best = { cols, rows, score };
+  }
+  if (!best) best = { cols: Math.ceil(Math.sqrt(n)), rows: Math.ceil(n / Math.ceil(Math.sqrt(n))) };
+  $grid.style.gridTemplateColumns = `repeat(${best.cols}, 1fr)`;
+  $grid.style.gridTemplateRows = `repeat(${best.rows}, 1fr)`;
+}
+
+let fitTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(fitGrid, 150);
+});
+
+/* ---------- edit-mode actions ---------- */
+
+function isHidden(item) { return (settings.hidden || []).includes(item.key); }
+
+function toggleHidden(item) {
+  settings.hidden = settings.hidden || [];
+  const i = settings.hidden.indexOf(item.key);
+  if (i >= 0) settings.hidden.splice(i, 1);
+  else settings.hidden.push(item.key);
+  saveSettings();
+}
+
+let renameTarget = null;
+const $overlay = document.getElementById('overlay');
+const $modalInput = document.getElementById('modalInput');
+
+function openRename(item) {
+  renameTarget = item;
+  $modalInput.value = item.name;
+  $overlay.classList.add('open');
+  setTimeout(() => { $modalInput.focus(); $modalInput.select(); }, 50);
+}
+document.getElementById('modalCancel').onclick = () => $overlay.classList.remove('open');
+document.getElementById('modalSave').onclick = saveRename;
+$modalInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveRename(); });
+
+function saveRename() {
+  const v = $modalInput.value.trim();
+  $overlay.classList.remove('open');
+  if (!renameTarget || !v) return;
+  settings.names[renameTarget.key] = v;
+  saveSettings();
+}
+
+function ungroup(item) {
+  settings.groups = settings.groups.filter(g => g !== item.group);
+  // a group rename no longer applies once ungrouped
+  delete settings.names[item.key];
+  saveSettings();
+}
+
+function updateCombineBar() {
+  $combineBar.hidden = !(editMode && selected.size >= 2);
+}
+
+document.getElementById('combineBtn').onclick = async () => {
+  const members = [...selected].map(k => k.replace(/^a:/, ''));
+  const group = { name: 'New Group', members };
+  settings.groups.push(group);
+  selected.clear();
+  updateCombineBar();
+  await saveSettings();
+  // open rename for the freshly made group
+  const k = 'g:' + [...members].sort().join('|');
+  openRename({ key: k, name: 'New Group' });
+};
+
+$editBtn.onclick = () => {
+  editMode = !editMode;
+  document.body.classList.toggle('editing', editMode);
+  $editBtn.textContent = editMode ? 'Done' : 'Edit';
+  $editBtn.classList.toggle('active', editMode);
+  if (!editMode) { selected.clear(); rebuild(); }
+  else rebuild();
+  updateCombineBar();
+};
+
+function rebuild() {
+  built = false;
+  $grid.innerHTML = '';
+  if (lastData) handleData(lastData);
+}
+
+/* ---------- refresh ---------- */
+
+function fmtSensor(elm, v) {
+  if (elm.dataset.fmt === 'airq') return AIRQ_LABELS[v] || '—';
+  if (elm.dataset.fmt === 'occ') return v ? 'Active' : 'Idle';
+  return typeof v === 'number' ? Math.round(v * 10) / 10 : v;
+}
+
+function refresh(items) {
+  for (const item of items) {
+    if (item.isShelly) {
+      const k = 'sk:' + item.key;
+      const t = touched.get(k);
+      const stale = t && Date.now() - t < TOUCH_HOLD_MS;
+      const card = document.getElementById('item-' + CSS.escape(item.key));
+      if (!stale) {
+        if (card) card.classList.toggle('is-on', !!item.comp.state);
+        const sub = document.querySelector('[data-sub="' + CSS.escape(item.key) + '"]');
+        if (sub) sub.textContent = item.comp.state
+          ? 'On' + (item.comp.apower > 1 ? ' · ' + Math.round(item.comp.apower) + ' W' : '')
+          : 'Off';
+      }
+      continue;
+    }
+    let onAny = false, subParts = [];
+    for (const acc of item.members) {
+      for (const svc of acc.services) {
+        for (const ch of svc.characteristics) {
+          const k = key(acc.aid, ch.iid);
+          const t = touched.get(k);
+          const stale = t && Date.now() - t < TOUCH_HOLD_MS;
+          document.querySelectorAll('[data-k="' + k + '"]').forEach(elm => {
+            if (stale) return;
+            if (elm.classList.contains('chip'))
+              elm.classList.toggle('on', !!ch.value);
+            else if (elm.classList.contains('seg'))
+              elm.querySelectorAll('button').forEach(b => b.classList.toggle('sel', Number(b.dataset.v) === ch.value));
+            else if (elm.classList.contains('tval')) {
+              elm.dataset.cur = ch.value;
+              elm.textContent = ch.value + '°';
+            } else if (elm.classList.contains('sv'))
+              elm.textContent = fmtSensor(elm, ch.value);
+            else if (elm.tagName === 'INPUT') {
+              elm.value = ch.value;
+              setFill(elm);
+              const val = elm.parentElement.querySelector('.val');
+              if (val) val.textContent = ch.value + (elm.classList.contains('ct') ? '' : '%');
+            }
+          });
+          if ((ch.type === T.ON || ch.type === T.ACTIVE) && svc.type !== SVC.INFO && ch.value) onAny = true;
+          if (acc === item.members[0]) {
+            if (ch.type === T.CUR_TEMP) subParts.push(Math.round(ch.value * 10) / 10 + '°C');
+            if (ch.type === T.CUR_HC) subParts.push(['Off','Idle','Heating','Cooling'][ch.value] || '');
+            if (ch.type === T.CUR_AP && ch.value === 2) subParts.push('Purifying');
+            if (ch.type === T.BRIGHT && ch.value) subParts.push(ch.value + '%');
+          }
+        }
+      }
+    }
+    const card = document.getElementById('item-' + CSS.escape(item.key));
+    if (card) {
+      const mt = card.dataset.mainK && touched.get(card.dataset.mainK);
+      const mainStale = mt && Date.now() - mt < TOUCH_HOLD_MS;
+      if (!mainStale) card.classList.toggle('is-on', onAny);
+    }
+    const sub = document.querySelector('[data-sub="' + CSS.escape(item.key) + '"]');
+    if (sub) {
+      const hasToggle = !!(card && card.dataset.mainK);
+      const parts = subParts.filter(Boolean).slice(0, 3).join(' · ');
+      // sensor-only tiles have nothing to switch — show readings, not "Off"
+      sub.textContent = hasToggle ? (onAny ? parts || 'On' : 'Off') : parts;
+    }
+  }
+}
+
+function handleData(data) {
+  const items = buildItems(data);
+  if (!built) {
+    const weight = (it) => {
+      if (it.isGroup) return -1;
+      if (it.isShelly) return 0;
+      const t = it.members[0].services.map(s => s.type);
+      if (t.includes(SVC.LIGHT)) return 0;
+      if (t.includes(SVC.HC) || t.includes(SVC.AP)) return 1;
+      if (t.includes(SVC.SWITCH)) return 2;
+      return 3;
+    };
+    items
+      .filter(it => editMode || !isHidden(it))
+      .sort((a, b) => weight(a) - weight(b))
+      .forEach(it => $grid.append(buildCard(it)));
+    built = true;
+    fitGrid();
+  }
+  refresh(items.filter(it => editMode || !isHidden(it)));
+  updateIndoor(items);
+  if (lastWeather) renderWeather(lastWeather);
+}
+
+/* ---------- weather ---------- */
+
+function wmoInfo(code) {
+  if (code === 0) return ['☀️', 'Clear'];
+  if (code <= 2) return ['🌤️', 'Partly cloudy'];
+  if (code === 3) return ['☁️', 'Overcast'];
+  if (code === 45 || code === 48) return ['🌫️', 'Fog'];
+  if (code <= 57) return ['🌦️', 'Drizzle'];
+  if (code <= 67) return ['🌧️', 'Rain'];
+  if (code <= 77) return ['🌨️', 'Snow'];
+  if (code <= 82) return ['🌧️', 'Showers'];
+  if (code <= 86) return ['🌨️', 'Snow showers'];
+  return ['⛈️', 'Thunderstorm'];
+}
+
+function renderWeather(w) {
+  if (!w || !w.current) return;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  const [icon, label] = wmoInfo(w.current.weather_code);
+  set('wIcon', icon);
+  set('wTemp', Math.round(w.current.temperature_2m) + '°');
+  set('wCond', label + ' · feels like ' + Math.round(w.current.apparent_temperature) + '°');
+  set('wHi', Math.round(w.daily.temperature_2m_max[0]));
+  set('wLo', Math.round(w.daily.temperature_2m_min[0]));
+  set('wHum', w.current.relative_humidity_2m);
+  set('wWind', Math.round(w.current.wind_speed_10m));
+}
+
+// room temperature: taken from the AC / heater-cooler accessory via Homebridge
+function updateIndoor(items) {
+  let visible = null, any = null;
+  for (const item of items) {
+    if (item.isShelly || !item.members) continue;
+    for (const svc of item.members[0].services) {
+      if (svc.type !== SVC.HC) continue;
+      const c = findChar(svc, T.CUR_TEMP);
+      if (c && typeof c.value === 'number') {
+        if (any === null) any = c.value;
+        if (visible === null && !isHidden(item)) visible = c.value;
+      }
+    }
+  }
+  const v = visible !== null ? visible : any;
+  const e = document.getElementById('wIndoor');
+  if (e && v !== null) e.textContent = Math.round(v * 10) / 10;
+}
+
+async function fetchWeather() {
+  try {
+    lastWeather = await (await fetch('/api/weather')).json();
+    renderWeather(lastWeather);
+  } catch (e) { /* retry on next cycle */ }
+}
+
+async function poll() {
+  try {
+    const [acc, shelly] = await Promise.all([
+      fetch('/api/accessories').then(r => r.json()),
+      fetch('/api/shelly').then(r => r.json()).catch(() => shellyData),
+    ]);
+    lastData = acc;
+    shellyData = Array.isArray(shelly) ? shelly : shellyData;
+    handleData(lastData);
+    $status.textContent = '';
+  } catch (e) {
+    $status.textContent = '⚠ offline';
+  }
+}
+
+async function init() {
+  try {
+    settings = await (await fetch('/api/settings')).json();
+  } catch (e) { /* defaults */ }
+  fetchWeather();
+  setInterval(fetchWeather, 10 * 60 * 1000);
+  await poll();
+  setInterval(poll, 3000);
+}
+init();
+
+const $clock = document.getElementById('clock');
+function tick() {
+  const now = new Date();
+  $clock.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('date').textContent =
+    now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
+setInterval(tick, 10000);
+tick();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
