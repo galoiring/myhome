@@ -1,9 +1,12 @@
 package com.gal.myhome.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,19 +25,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Curtains
 import androidx.compose.material.icons.rounded.Cyclone
-import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.Eco
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.Home
@@ -52,12 +54,12 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,11 +73,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -113,6 +118,17 @@ private val SWATCHES = listOf(
     Swatch(320, 75, Color(0xFFFF5EC4)),
 )
 
+/* signature "on" tint — warm amber, independent of the dynamic palette so a
+   lit tile always reads as "on" at a glance, matching the web dashboard */
+private object OnTint {
+    val tileLight = Color(0xFFFFF2CC)
+    val tileDark = Color(0xFF4A3A12)
+    val contentLight = Color(0xFF4A3A00)
+    val contentDark = Color(0xFFFFE9A8)
+    val iconCircle = Color(0xFFFFCF47)
+    val iconTint = Color(0xFF4A3A00)
+}
+
 fun tileIcon(kind: TileKind): ImageVector = when (kind) {
     TileKind.LIGHT -> Icons.Rounded.Lightbulb
     TileKind.AC -> Icons.Rounded.AcUnit
@@ -133,6 +149,11 @@ private fun sensorIcon(kind: SensorKind): ImageVector = when (kind) {
     SensorKind.OCCUPANCY -> Icons.Rounded.Timer
     SensorKind.MOTION -> Icons.AutoMirrored.Rounded.DirectionsWalk
     SensorKind.FILTER -> Icons.Rounded.FilterAlt
+}
+
+private fun trimNum(d: Double): String {
+    val r = (d * 10).roundToInt() / 10.0
+    return if (r == r.toLong().toDouble()) r.toLong().toString() else r.toString()
 }
 
 /* ---------- clock ---------- */
@@ -295,7 +316,7 @@ private fun WeatherStrip(w: Weather?, indoor: Double?) {
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "${(indoor * 10).roundToInt() / 10.0}°",
+                        "${trimNum(indoor)}°",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                     )
@@ -344,7 +365,7 @@ fun AdaptiveGrid(
             }
             return@BoxWithConstraints
         }
-        // pick the cols × rows split whose tile shape is closest to ~0.95 w/h
+        // pick the cols × rows split whose tile shape is closest to ~1.25 w/h
         var bestCols = 1
         var bestScore = Double.NEGATIVE_INFINITY
         for (cols in 1..count) {
@@ -352,7 +373,7 @@ fun AdaptiveGrid(
             val tw = (maxWidth - gap * (cols - 1)) / cols
             val th = (maxHeight - gap * (rows - 1)) / rows
             if (tw < 170.dp && cols > 1) continue
-            val score = -abs(ln((tw / th) / 0.95))
+            val score = -abs(ln((tw / th) / 1.25))
             if (score > bestScore) {
                 bestScore = score
                 bestCols = cols
@@ -390,86 +411,64 @@ fun AdaptiveGrid(
 fun TileCard(tile: TileUi, vm: DashboardViewModel) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+    val onTile = if (dark) OnTint.tileDark else OnTint.tileLight
+    val onContent = if (dark) OnTint.contentDark else OnTint.contentLight
     val bg by animateColorAsState(
-        if (tile.isOn) MaterialTheme.colorScheme.tertiaryContainer
-        else MaterialTheme.colorScheme.surfaceContainerLow,
+        if (tile.isOn) onTile else MaterialTheme.colorScheme.surfaceContainerLow,
         label = "tileBg",
     )
-    val onColor =
-        if (tile.isOn) MaterialTheme.colorScheme.onTertiaryContainer
-        else MaterialTheme.colorScheme.onSurface
-    val subColor =
-        if (tile.isOn) MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = .7f)
-        else MaterialTheme.colorScheme.onSurfaceVariant
+    val nameColor = if (tile.isOn) onContent else MaterialTheme.colorScheme.onSurface
+    val subColor = if (tile.isOn) onContent.copy(alpha = .75f)
+    else MaterialTheme.colorScheme.onSurfaceVariant
 
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed && tile.canToggle) 0.97f else 1f,
+        label = "tilePress",
+    )
+
+    // the whole card is the on/off button — inner controls consume their own touches
     Surface(
+        onClick = {
+            if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            vm.toggleTile(tile)
+        },
+        enabled = tile.canToggle,
+        interactionSource = interaction,
         shape = RoundedCornerShape(22.dp),
         color = bg,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
-        Column(
-            Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            // head — tapping it toggles the device
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .let { m ->
-                        if (tile.canToggle) m.clickable {
-                            if (prefs.hapticFeedback) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            }
-                            vm.toggleTile(tile)
-                        } else m
-                    },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = if (tile.isOn) MaterialTheme.colorScheme.tertiary.copy(alpha = .25f)
-                    else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(38.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            tileIcon(tile.kind), null,
-                            Modifier.size(20.dp),
-                            tint = onColor,
-                        )
-                    }
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        tile.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = onColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (tile.sub.isNotEmpty()) {
-                        Text(
-                            tile.sub,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = subColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-
-            if (tile.controls.isNotEmpty() || tile.chips.isNotEmpty() || tile.sensors.isNotEmpty()) {
+        val hasBody =
+            tile.controls.isNotEmpty() || tile.chips.isNotEmpty() || tile.sensors.isNotEmpty()
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            if (!hasBody) {
+                // simple tile: center the head vertically, larger icon
                 Column(
                     Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.Center,
                 ) {
-                    tile.controls.forEach { ControlView(it, tile, vm, onColor, subColor) }
-                    if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, onColor, subColor)
+                    TileHead(tile, nameColor, subColor, big = true)
+                }
+            } else {
+                TileHead(tile, nameColor, subColor, big = false)
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(7.dp, Alignment.Bottom),
+                ) {
+                    tile.controls.forEach { ControlView(it, vm, nameColor, subColor) }
+                    if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
                     if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
                 }
             }
@@ -478,15 +477,56 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel) {
 }
 
 @Composable
+private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (big) 12.dp else 10.dp),
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = if (tile.isOn) OnTint.iconCircle
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.size(if (big) 50.dp else 40.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    tileIcon(tile.kind), null,
+                    Modifier.size(if (big) 26.dp else 21.dp),
+                    tint = if (tile.isOn) OnTint.iconTint else nameColor,
+                )
+            }
+        }
+        Column {
+            Text(
+                tile.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = nameColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (tile.sub.isNotEmpty()) {
+                Text(
+                    tile.sub,
+                    style = if (big) MaterialTheme.typography.bodyMedium
+                    else MaterialTheme.typography.bodySmall,
+                    color = subColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ControlView(
     ctl: Control,
-    tile: TileUi,
     vm: DashboardViewModel,
     onColor: Color,
     subColor: Color,
 ) {
     when (ctl) {
-        is SliderCtl -> SliderRow(ctl, vm, subColor)
+        is SliderCtl -> SliderRow(ctl, vm, onColor, subColor)
         is SegCtl -> SegRow(ctl, vm)
         is StepCtl -> StepperRow(ctl, vm, onColor, subColor)
         is SwatchCtl -> SwatchRow(ctl, vm)
@@ -494,7 +534,7 @@ private fun ControlView(
 }
 
 @Composable
-private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, subColor: Color) {
+private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
     var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
     val shown = drag ?: ctl.value
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -505,14 +545,13 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, subColor: Color) {
             modifier = Modifier.width(66.dp),
             maxLines = 1,
         )
-        Box(Modifier.weight(1f)) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             if (ctl.warm) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
-                        .align(Alignment.Center)
-                        .clip(RoundedCornerShape(4.dp))
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
                         .background(
                             Brush.horizontalGradient(
                                 listOf(Color(0xFFBCD9FF), Color(0xFFFFF3DA), Color(0xFFFFB84D))
@@ -528,18 +567,19 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, subColor: Color) {
                     drag = null
                 },
                 valueRange = ctl.min..ctl.max,
-                colors = if (ctl.warm) androidx.compose.material3.SliderDefaults.colors(
+                colors = if (ctl.warm) SliderDefaults.colors(
                     activeTrackColor = Color.Transparent,
                     inactiveTrackColor = Color.Transparent,
-                ) else androidx.compose.material3.SliderDefaults.colors(),
-                modifier = Modifier.height(30.dp),
+                ) else SliderDefaults.colors(),
+                modifier = Modifier.height(36.dp),
             )
         }
         Text(
             "${shown.roundToInt()}${ctl.unit}",
-            style = MaterialTheme.typography.labelMedium,
-            color = subColor,
-            modifier = Modifier.width(40.dp),
+            style = MaterialTheme.typography.titleSmall,
+            color = onColor,
+            modifier = Modifier.width(42.dp),
+            textAlign = TextAlign.End,
             maxLines = 1,
         )
     }
@@ -547,7 +587,7 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, subColor: Color) {
 
 @Composable
 private fun SegRow(ctl: SegCtl, vm: DashboardViewModel) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(34.dp)) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(36.dp)) {
         ctl.options.forEachIndexed { i, (v, label) ->
             SegmentedButton(
                 selected = ctl.value == v,
@@ -573,8 +613,7 @@ private fun StepperRow(ctl: StepCtl, vm: DashboardViewModel, onColor: Color, sub
         Spacer(Modifier.weight(1f))
         FilledTonalIconButton(
             onClick = { bump(ctl, vm, -1) },
-            modifier = Modifier.size(34.dp),
-            colors = IconButtonDefaults.filledTonalIconButtonColors(),
+            modifier = Modifier.size(36.dp),
         ) { Icon(Icons.Rounded.Remove, "decrease", Modifier.size(18.dp)) }
         Text(
             "${trimNum(ctl.value)}°",
@@ -582,11 +621,11 @@ private fun StepperRow(ctl: StepCtl, vm: DashboardViewModel, onColor: Color, sub
             color = onColor,
             modifier = Modifier.width(56.dp),
             maxLines = 1,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
         FilledTonalIconButton(
             onClick = { bump(ctl, vm, +1) },
-            modifier = Modifier.size(34.dp),
+            modifier = Modifier.size(36.dp),
         ) { Icon(Icons.Rounded.Add, "increase", Modifier.size(18.dp)) }
     }
 }
@@ -598,22 +637,17 @@ private fun bump(ctl: StepCtl, vm: DashboardViewModel, dir: Int) {
     vm.sendChars(ctl.targets, if (v == v.toLong().toDouble()) v.toLong() else v)
 }
 
-private fun trimNum(d: Double): String {
-    val r = (d * 10).roundToInt() / 10.0
-    return if (r == r.toLong().toDouble()) r.toLong().toString() else r.toString()
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SwatchRow(ctl: SwatchCtl, vm: DashboardViewModel) {
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SWATCHES.forEach { sw ->
             Box(
                 Modifier
-                    .size(27.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
                     .background(sw.color)
                     .border(1.dp, Color.Black.copy(alpha = .10f), CircleShape)

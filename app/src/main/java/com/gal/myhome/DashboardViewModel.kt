@@ -532,7 +532,8 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             origNames = members.map { it.origName },
             controls = controls,
             chips = chips,
-            sensors = sensors,
+            // accessories often expose the same reading through several services
+            sensors = sensors.distinctBy { it.kind },
             shelly = null,
             toggleTargets = toggleTargets,
             toggleIsActive = toggleIsActive,
