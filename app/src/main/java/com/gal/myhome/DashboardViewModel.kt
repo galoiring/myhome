@@ -55,7 +55,8 @@ data class StepCtl(
     val min: Double, val max: Double, val step: Double, val targets: List<Target>,
 ) : Control
 
-data class SwatchCtl(val hue: List<Target>, val sat: List<Target>) : Control
+// window covering position; value is % open, fabric drawn anchored left (opens right→left)
+data class CurtainCtl(val id: String, val value: Float, val targets: List<Target>) : Control
 
 data class ChipUi(
     val id: String, val label: String, val on: Boolean,
@@ -178,17 +179,6 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         rebuild(ui.offline)
         viewModelScope.launch {
             try { api.setChars(targets, value) } catch (_: Exception) { /* next poll restores truth */ }
-        }
-    }
-
-    fun setColor(hue: List<Target>, sat: List<Target>, h: Int, s: Int) {
-        for (t in hue) override("${t.aid}.${t.iid}", h)
-        for (t in sat) override("${t.aid}.${t.iid}", s)
-        viewModelScope.launch {
-            try {
-                api.setChars(hue, h)
-                api.setChars(sat, s)
-            } catch (_: Exception) { }
         }
     }
 
@@ -425,21 +415,16 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), true, tg(T.CT)))
             }
             svc.ch(T.TGT_POS)?.let { c ->
-                controls.add(SliderCtl(cid(c), "Position", "%",
-                    (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
-                    (c.minStep ?: 1.0).toFloat(),
-                    (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.TGT_POS)))
+                controls.add(CurtainCtl(cid(c),
+                    (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), tg(T.TGT_POS)))
             }
 
-            val hue = svc.ch(T.HUE)
-            val sat = svc.ch(T.SAT)
-            if (hue != null && sat != null) controls.add(SwatchCtl(tg(T.HUE), tg(T.SAT)))
-
+            val hcMode = svc.ch(T.TGT_HC)?.let { chrValue(acc.aid, it).asDouble()?.toInt() }
             svc.ch(T.TGT_HC)?.let { c ->
                 val labels = listOf(0 to "Auto", 1 to "Heat", 2 to "Cool")
                 val valid = c.validValues ?: labels.map { it.first }
                 controls.add(SegCtl(cid(c), labels.filter { it.first in valid },
-                    chrValue(acc.aid, c).asDouble()?.toInt(), tg(T.TGT_HC)))
+                    hcMode, tg(T.TGT_HC)))
             }
             svc.ch(T.TGT_AP)?.let { c ->
                 val labels = listOf(0 to "Manual", 1 to "Auto")
@@ -448,11 +433,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     chrValue(acc.aid, c).asDouble()?.toInt(), tg(T.TGT_AP)))
             }
 
-            svc.ch(T.COOL_TH)?.let { c ->
+            // only show the setpoint that matters for the current mode (0=auto,1=heat,2=cool)
+            if (hcMode != 1) svc.ch(T.COOL_TH)?.let { c ->
                 controls.add(StepCtl(cid(c), "Cool to", chrValue(acc.aid, c).asDouble() ?: 0.0,
                     c.minValue ?: 10.0, c.maxValue ?: 35.0, stepOf(c), tg(T.COOL_TH)))
             }
-            svc.ch(T.HEAT_TH)?.let { c ->
+            if (hcMode != 2) svc.ch(T.HEAT_TH)?.let { c ->
                 controls.add(StepCtl(cid(c), "Heat to", chrValue(acc.aid, c).asDouble() ?: 0.0,
                     c.minValue ?: 0.0, c.maxValue ?: 25.0, stepOf(c), tg(T.HEAT_TH)))
             }
@@ -516,15 +502,26 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         // a fresh head-tap wins over polled state until the server catches up
         (overrides["main:$key"]?.first as? Boolean)?.let { onAny = it }
 
+        val kind = tileKind(acc)
+        if (kind == TileKind.PURIFIER) {
+            // keep the wall view simple: auto/manual + speed + PM2.5 only
+            chips.clear()
+            sensors.retainAll { it.kind == SensorKind.PM25 }
+        }
+
         val hasToggle = toggleTargets.isNotEmpty()
         val parts = subParts.take(3).joinToString(" · ")
-        val sub = if (hasToggle) (if (onAny) parts.ifEmpty { "On" } else "Off") else parts
+        val sub = when {
+            hasToggle -> if (onAny) parts.ifEmpty { "On" } else "Off"
+            kind == TileKind.SENSOR -> "" // the tile body shows the readings large
+            else -> parts
+        }
 
         return TileUi(
             key = key,
             name = name,
             sub = sub,
-            kind = tileKind(acc),
+            kind = kind,
             isOn = onAny && hasToggle,
             canToggle = hasToggle,
             hidden = key in serverSettings.hidden,

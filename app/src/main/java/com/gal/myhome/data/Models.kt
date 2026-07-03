@@ -59,7 +59,9 @@ data class ServerSettings(
     val names: MutableMap<String, String> = mutableMapOf(),
     val groups: MutableList<Group> = mutableListOf(),
     val hidden: MutableList<String> = mutableListOf(),
-    val shellies: MutableList<String> = mutableListOf(),
+    // opaque passthrough — the shelly device list is managed by the server;
+    // round-trip it untouched so app-side saves never corrupt it
+    var shelliesRaw: String = "[]",
 )
 
 data class Weather(

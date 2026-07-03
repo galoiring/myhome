@@ -3,8 +3,8 @@ package com.gal.myhome.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -71,12 +71,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -87,13 +90,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gal.myhome.ChipUi
 import com.gal.myhome.Control
+import com.gal.myhome.CurtainCtl
 import com.gal.myhome.DashboardViewModel
 import com.gal.myhome.SegCtl
 import com.gal.myhome.SensorKind
 import com.gal.myhome.SensorUi
 import com.gal.myhome.SliderCtl
 import com.gal.myhome.StepCtl
-import com.gal.myhome.SwatchCtl
 import com.gal.myhome.TileKind
 import com.gal.myhome.TileUi
 import com.gal.myhome.data.ClockFormat
@@ -107,16 +110,6 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.ln
 import kotlin.math.roundToInt
-
-/* ---------- swatch presets (hue, saturation, preview color) ---------- */
-private data class Swatch(val h: Int, val s: Int, val color: Color)
-private val SWATCHES = listOf(
-    Swatch(0, 0, Color(0xFFFFF8E7)), Swatch(35, 60, Color(0xFFFFCF8A)),
-    Swatch(0, 85, Color(0xFFFF5252)), Swatch(30, 90, Color(0xFFFF9230)),
-    Swatch(60, 80, Color(0xFFFFE44D)), Swatch(120, 75, Color(0xFF5BE65B)),
-    Swatch(200, 80, Color(0xFF3EC1FF)), Swatch(270, 75, Color(0xFFB266FF)),
-    Swatch(320, 75, Color(0xFFFF5EC4)),
-)
 
 /* signature "on" tint — warm amber, independent of the dynamic palette so a
    lit tile always reads as "on" at a glance, matching the web dashboard */
@@ -457,6 +450,47 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel) {
                 ) {
                     TileHead(tile, nameColor, subColor, big = true)
                 }
+            } else if (tile.kind == TileKind.SENSOR && tile.controls.isEmpty()) {
+                // room sensor: show the reading large, like a thermometer card
+                TileHead(tile, nameColor, subColor, big = false)
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
+                    if (temp != null) {
+                        Text(
+                            "${temp.value}°",
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = nameColor,
+                        )
+                    }
+                    val rest = tile.sensors.filterNot { it === temp }
+                    if (rest.isNotEmpty()) {
+                        Row(
+                            Modifier.padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            rest.forEach { s ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Icon(sensorIcon(s.kind), null, Modifier.size(16.dp), tint = subColor)
+                                    Text(s.value, style = MaterialTheme.typography.titleMedium, color = nameColor)
+                                    if (s.unit.isNotEmpty()) {
+                                        Text(s.unit, style = MaterialTheme.typography.labelSmall, color = subColor)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 TileHead(tile, nameColor, subColor, big = false)
                 Column(
@@ -529,7 +563,7 @@ private fun ControlView(
         is SliderCtl -> SliderRow(ctl, vm, onColor, subColor)
         is SegCtl -> SegRow(ctl, vm)
         is StepCtl -> StepperRow(ctl, vm, onColor, subColor)
-        is SwatchCtl -> SwatchRow(ctl, vm)
+        is CurtainCtl -> CurtainRow(ctl, vm, onColor, subColor)
     }
 }
 
@@ -637,22 +671,94 @@ private fun bump(ctl: StepCtl, vm: DashboardViewModel, dir: Int) {
     vm.sendChars(ctl.targets, if (v == v.toLong().toDouble()) v.toLong() else v)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/* draggable curtain: the fabric is anchored left and the leading edge moves
+   right→left as it opens, mirroring the physical curtain. Tap or drag the
+   window to set the position. */
 @Composable
-private fun SwatchRow(ctl: SwatchCtl, vm: DashboardViewModel) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        SWATCHES.forEach { sw ->
+private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+    var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
+    val open = (drag ?: ctl.value).coerceIn(0f, 100f)
+
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (open <= 1f) "Closed" else "${open.roundToInt()}% open",
+                style = MaterialTheme.typography.titleSmall,
+                color = onColor,
+            )
+            Spacer(Modifier.weight(1f))
+            Text("drag to move", style = MaterialTheme.typography.labelSmall, color = subColor)
+        }
+        val fabricColor = MaterialTheme.colorScheme.secondaryContainer
+        val pleatColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = .18f)
+        val gripColor = MaterialTheme.colorScheme.primary
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.surfaceContainerHighest,
+                            MaterialTheme.colorScheme.surfaceContainerHigh,
+                        )
+                    )
+                )
+                .pointerInput(ctl.id) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { off ->
+                            drag = ((1f - off.x / size.width) * 100f).coerceIn(0f, 100f)
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            drag = ((1f - change.position.x / size.width) * 100f)
+                                .coerceIn(0f, 100f)
+                        },
+                        onDragEnd = {
+                            drag?.let { vm.sendChars(ctl.targets, it.roundToInt()) }
+                            drag = null
+                        },
+                        onDragCancel = { drag = null },
+                    )
+                }
+                .pointerInput("${ctl.id}:tap") {
+                    detectTapGestures { off ->
+                        val v = ((1f - off.x / size.width) * 100f).coerceIn(0f, 100f)
+                        vm.sendChars(ctl.targets, v.roundToInt())
+                    }
+                }
+        ) {
             Box(
                 Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(sw.color)
-                    .border(1.dp, Color.Black.copy(alpha = .10f), CircleShape)
-                    .clickable { vm.setColor(ctl.hue, ctl.sat, sw.h, sw.s) }
-            )
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction = (1f - open / 100f).coerceIn(0.04f, 1f))
+                    .background(fabricColor)
+                    .drawBehind {
+                        // pleats
+                        var x = 12.dp.toPx()
+                        val step = 13.dp.toPx()
+                        while (x < size.width - 4.dp.toPx()) {
+                            drawLine(
+                                pleatColor,
+                                Offset(x, 5.dp.toPx()),
+                                Offset(x, size.height - 5.dp.toPx()),
+                                strokeWidth = 2.5f,
+                            )
+                            x += step
+                        }
+                    },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                // grip on the leading edge
+                Box(
+                    Modifier
+                        .padding(end = 3.dp)
+                        .width(4.dp)
+                        .fillMaxHeight(0.55f)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(gripColor)
+                )
+            }
         }
     }
 }

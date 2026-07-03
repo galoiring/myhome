@@ -102,9 +102,7 @@ class HomeApi {
         o.optJSONArray("hidden")?.let { h ->
             for (i in 0 until h.length()) s.hidden.add(h.getString(i))
         }
-        o.optJSONArray("shellies")?.let { sh ->
-            for (i in 0 until sh.length()) s.shellies.add(sh.getString(i))
-        }
+        o.optJSONArray("shellies")?.let { sh -> s.shelliesRaw = sh.toString() }
         s
     }
 
@@ -115,7 +113,7 @@ class HomeApi {
             JSONObject().put("name", g.name).put("members", JSONArray(g.members))
         }))
         o.put("hidden", JSONArray(s.hidden))
-        o.put("shellies", JSONArray(s.shellies))
+        o.put("shellies", JSONArray(s.shelliesRaw))
         postBody("/api/settings", o.toString())
     }
 
