@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The dashboard server is plain HTTP on the LAN and its address is
+     user-configurable in Settings, so cleartext must be allowed globally. -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">192.168.68.75</domain>
-    </domain-config>
 </network-security-config>
