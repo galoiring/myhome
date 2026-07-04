@@ -454,7 +454,36 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             ))
         }
 
-        val tagged = list.map {
+        // split the purifier's air-quality reading into its own tile so the
+        // controls tile stays short — a combined tile needed inside-scrolling
+        // to reach the reading, which defeats the point of a compact size
+        val split = mutableListOf<TileUi>()
+        for (t in list) {
+            if (t.kind == TileKind.PURIFIER && t.sensors.isNotEmpty()) {
+                split.add(t.copy(sensors = emptyList()))
+                split.add(TileUi(
+                    key = "${t.key}:aq",
+                    name = "${t.name} Air Quality",
+                    sub = "",
+                    kind = TileKind.SENSOR,
+                    isOn = false,
+                    canToggle = false,
+                    hidden = t.hidden,
+                    isGroup = false,
+                    origNames = t.origNames,
+                    controls = emptyList(),
+                    chips = emptyList(),
+                    sensors = t.sensors,
+                    shelly = null,
+                    toggleTargets = emptyList(),
+                    toggleIsActive = false,
+                ))
+            } else {
+                split.add(t)
+            }
+        }
+
+        val tagged = split.map {
             val size = p.sizeFor(it.key)
             it.copy(room = p.roomFor(it.key), width = size.width, height = size.height)
         }
