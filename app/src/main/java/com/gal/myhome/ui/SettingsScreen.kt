@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,10 +25,14 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -356,65 +361,75 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
             }
             items(vm.ui.tiles.size) { i ->
                 val tile = vm.ui.tiles[i]
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        tileIcon(tile.kind), null,
-                        Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            tile.name,
-                            style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            tileIcon(tile.kind), null,
+                            Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        val detail = when {
-                            tile.isGroup -> "Group · " + tile.origNames.joinToString(", ")
-                            tile.origNames.firstOrNull()?.let { it != tile.name } == true ->
-                                tile.origNames.first()
-                            else -> null
-                        }
-                        if (detail != null) {
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                detail,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tile.name,
+                                style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
+                            val detail = when {
+                                tile.isGroup -> "Group · " + tile.origNames.joinToString(", ")
+                                tile.origNames.firstOrNull()?.let { it != tile.name } == true ->
+                                    tile.origNames.first()
+                                else -> null
+                            }
+                            if (detail != null) {
+                                Text(
+                                    detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
+                        if (tile.isGroup) {
+                            TextButton(onClick = { vm.ungroup(tile) }) { Text("Ungroup") }
+                        }
+                        IconButton(onClick = { renameTile = tile }) {
+                            Icon(Icons.Rounded.Edit, "Rename", Modifier.size(19.dp))
+                        }
+                        Switch(
+                            checked = !tile.hidden,
+                            onCheckedChange = { vm.setTileHidden(tile, !it) },
+                        )
                     }
-                    if (tile.isGroup) {
-                        TextButton(onClick = { vm.ungroup(tile) }) { Text("Ungroup") }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp, start = 32.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = { vm.moveTile(tile.key, -1) },
+                            enabled = i > 0,
+                            modifier = Modifier.size(32.dp),
+                        ) { Icon(Icons.Rounded.ArrowUpward, "Move up", Modifier.size(16.dp)) }
+                        IconButton(
+                            onClick = { vm.moveTile(tile.key, 1) },
+                            enabled = i < vm.ui.tiles.size - 1,
+                            modifier = Modifier.size(32.dp),
+                        ) { Icon(Icons.Rounded.ArrowDownward, "Move down", Modifier.size(16.dp)) }
+                        Spacer(Modifier.width(6.dp))
+                        RoomDropdown(
+                            current = prefs.roomFor(tile.key),
+                            onSelect = { vm.setRoom(tile.key, it) },
+                        )
                     }
-                    AssistChip(
-                        onClick = {
-                            val cur = prefs.roomFor(tile.key)
-                            val next = Room.entries[
-                                ((cur?.ordinal ?: -1) + 1) % Room.entries.size]
-                            vm.setRoom(tile.key, next)
-                        },
-                        label = {
-                            Text(
-                                prefs.roomFor(tile.key)?.label ?: "Room…",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        },
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                    IconButton(onClick = { renameTile = tile }) {
-                        Icon(Icons.Rounded.Edit, "Rename", Modifier.size(19.dp))
-                    }
-                    Switch(
-                        checked = !tile.hidden,
-                        onCheckedChange = { vm.setTileHidden(tile, !it) },
-                    )
                 }
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f),
+                )
             }
             item {
                 OutlinedButton(
@@ -452,6 +467,28 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
             vm = vm,
             onDismiss = { showGroupDialog = false },
         )
+    }
+}
+
+@Composable
+private fun RoomDropdown(current: Room?, onSelect: (Room) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.height(34.dp)) {
+            Text(current?.label ?: "Assign room", style = MaterialTheme.typography.labelMedium)
+            Icon(Icons.Rounded.ArrowDropDown, null, Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Room.entries.forEach { r ->
+                DropdownMenuItem(
+                    text = { Text(r.label) },
+                    onClick = { onSelect(r); expanded = false },
+                    leadingIcon = if (r == current) {
+                        { Icon(Icons.Rounded.Check, null, Modifier.size(18.dp)) }
+                    } else null,
+                )
+            }
+        }
     }
 }
 

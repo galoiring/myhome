@@ -60,6 +60,8 @@ data class Prefs(
     val rooms: Map<String, Room> = emptyMap(),
     val yeelights: List<YeelightCfg> = emptyList(),
     val cameras: List<CameraCfg> = emptyList(),
+    // explicit user-chosen tile order; empty means "use the automatic sort"
+    val tileOrder: List<String> = emptyList(),
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
 }
@@ -88,6 +90,7 @@ class PrefsRepo(private val context: Context) {
         val rooms = stringPreferencesKey("rooms")
         val yeelights = stringPreferencesKey("yeelights")
         val cameras = stringPreferencesKey("cameras")
+        val tileOrder = stringPreferencesKey("tile_order")
     }
 
     private inline fun <reified E : Enum<E>> parse(v: String?, default: E): E =
@@ -113,6 +116,14 @@ class PrefsRepo(private val context: Context) {
                 val o = a.getJSONObject(i)
                 YeelightCfg(o.getString("ip"), o.optString("name", "Yeelight"))
             }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun parseStringList(v: String?): List<String> {
+        if (v.isNullOrEmpty()) return emptyList()
+        return try {
+            val a = JSONArray(v)
+            (0 until a.length()).map { a.getString(it) }
         } catch (_: Exception) { emptyList() }
     }
 
@@ -148,6 +159,7 @@ class PrefsRepo(private val context: Context) {
             rooms = parseRooms(p[K.rooms]),
             yeelights = parseYeelights(p[K.yeelights]),
             cameras = parseCameras(p[K.cameras]),
+            tileOrder = parseStringList(p[K.tileOrder]),
         )
     }
 
@@ -176,6 +188,7 @@ class PrefsRepo(private val context: Context) {
             p[K.cameras] = JSONArray(prefs.cameras.map {
                 JSONObject().put("name", it.name).put("url", it.url)
             }).toString()
+            p[K.tileOrder] = JSONArray(prefs.tileOrder).toString()
         }
     }
 }

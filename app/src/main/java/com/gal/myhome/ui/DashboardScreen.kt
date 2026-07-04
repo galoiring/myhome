@@ -437,6 +437,11 @@ fun RoomGroupedGrid(
             return@BoxWithConstraints
         }
         val rows = groupIntoRows(tiles)
+        // one shared tile width across every row, sized to the busiest row —
+        // a sparse row (e.g. Bedroom + Baby Room) then leaves trailing space
+        // instead of stretching its few tiles to fill the whole width
+        val maxRowCount = rows.maxOfOrNull { it.tiles.size } ?: 1
+        val tileWidth = (maxWidth - gap * (maxRowCount - 1)) / maxRowCount
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             for (row in rows) {
                 Column(
@@ -459,7 +464,7 @@ fun RoomGroupedGrid(
                         horizontalArrangement = Arrangement.spacedBy(gap),
                     ) {
                         row.tiles.forEach { t ->
-                            Box(Modifier.weight(1f).fillMaxHeight()) { tileContent(t) }
+                            Box(Modifier.width(tileWidth).fillMaxHeight()) { tileContent(t) }
                         }
                     }
                 }

@@ -227,6 +227,19 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         rebuild(ui.offline)
     }
 
+    /** Reorders tiles for manual layout control; captures the current full
+     * order on first use so every tile has an explicit position from then on. */
+    fun moveTile(key: String, delta: Int) {
+        val order = ui.tiles.map { it.key }.toMutableList()
+        val from = order.indexOf(key)
+        if (from < 0) return
+        val to = (from + delta).coerceIn(0, order.size - 1)
+        if (to == from) return
+        order.removeAt(from)
+        order.add(to, key)
+        updatePrefs(prefs.value.copy(tileOrder = order))
+    }
+
     fun toggleTile(tile: TileUi) {
         if (tile.yeelight != null) {
             val on = !tile.isOn
@@ -422,6 +435,11 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val tagged = list.map { it.copy(room = p.roomFor(it.key)) }
+        // an explicit user reorder always wins; new tiles not yet placed sort to the end
+        if (p.tileOrder.isNotEmpty()) {
+            val orderIndex = p.tileOrder.withIndex().associate { (i, k) -> k to i }
+            return tagged.sortedBy { orderIndex[it.key] ?: Int.MAX_VALUE }
+        }
         val weight: (TileUi) -> Int = { t ->
             when {
                 t.isGroup -> -1
