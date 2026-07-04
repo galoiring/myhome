@@ -1,9 +1,11 @@
 package com.gal.myhome
 
 import android.app.Application
+import android.content.Intent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gal.myhome.data.AIRQ_LABELS
@@ -24,6 +26,8 @@ import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.Svc
 import com.gal.myhome.data.T
 import com.gal.myhome.data.Target
+import com.gal.myhome.data.UpdateClient
+import com.gal.myhome.data.UpdateInfo
 import com.gal.myhome.data.Weather
 import com.gal.myhome.data.YeelightClient
 import com.gal.myhome.data.YlFound
@@ -117,14 +121,26 @@ data class UiState(
 
 private const val TOUCH_HOLD_MS = 5000L
 
+sealed interface UpdateState {
+    data object Idle : UpdateState
+    data object Checking : UpdateState
+    data class Available(val info: UpdateInfo) : UpdateState
+    data object Downloading : UpdateState
+    data class Error(val message: String) : UpdateState
+}
+
 class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     private val api = HomeApi()
     private val ylClient = YeelightClient()
+    private val updateClient = UpdateClient()
     val prefsRepo = PrefsRepo(app)
     val prefs = prefsRepo.flow.stateIn(viewModelScope, SharingStarted.Eagerly, Prefs())
 
     var ui by mutableStateOf(UiState())
+        private set
+
+    var updateState by mutableStateOf<UpdateState>(UpdateState.Idle)
         private set
 
     private var accs: List<Acc> = emptyList()
@@ -144,6 +160,40 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             launch { weatherLoop() }
             // prefs changes (rooms, sort, yeelights, cameras) reshape tiles immediately
             launch { prefs.collect { if (ui.loaded) rebuild(ui.offline) } }
+            launch { checkForUpdate() }
+        }
+    }
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            updateState = UpdateState.Checking
+            val info = updateClient.checkForUpdate(prefs.value.updateCheckUrl)
+            updateState = when {
+                info == null -> UpdateState.Error("Couldn't reach the update server")
+                info.versionCode <= BuildConfig.VERSION_CODE -> UpdateState.Idle
+                else -> UpdateState.Available(info)
+            }
+        }
+    }
+
+    fun downloadAndInstallUpdate() {
+        val available = updateState as? UpdateState.Available ?: return
+        viewModelScope.launch {
+            updateState = UpdateState.Downloading
+            val context = getApplication<Application>()
+            val file = updateClient.downloadApk(available.info.url, context.cacheDir)
+            if (file == null) {
+                updateState = UpdateState.Error("Download failed")
+                return@launch
+            }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+            updateState = UpdateState.Idle
         }
     }
 

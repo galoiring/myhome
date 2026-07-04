@@ -69,6 +69,7 @@ data class Prefs(
     // explicit user-chosen tile order; empty means "use the automatic sort"
     val tileOrder: List<String> = emptyList(),
     val tileSizes: Map<String, TileSizeCfg> = emptyMap(),
+    val updateCheckUrl: String = "http://192.168.68.51:8000/update.json",
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
     fun sizeFor(key: String): TileSizeCfg = tileSizes[key] ?: TileSizeCfg()
@@ -100,6 +101,7 @@ class PrefsRepo(private val context: Context) {
         val cameras = stringPreferencesKey("cameras")
         val tileOrder = stringPreferencesKey("tile_order")
         val tileSizes = stringPreferencesKey("tile_sizes")
+        val updateCheckUrl = stringPreferencesKey("update_check_url")
     }
 
     private inline fun <reified E : Enum<E>> parse(v: String?, default: E): E =
@@ -187,6 +189,7 @@ class PrefsRepo(private val context: Context) {
             cameras = parseCameras(p[K.cameras]),
             tileOrder = parseStringList(p[K.tileOrder]),
             tileSizes = parseTileSizes(p[K.tileSizes]),
+            updateCheckUrl = p[K.updateCheckUrl] ?: Prefs().updateCheckUrl,
         )
     }
 
@@ -219,6 +222,7 @@ class PrefsRepo(private val context: Context) {
             p[K.tileSizes] = JSONObject(prefs.tileSizes.mapValues {
                 JSONObject().put("width", it.value.width.name).put("height", it.value.height.name)
             }).toString()
+            p[K.updateCheckUrl] = prefs.updateCheckUrl
         }
     }
 }

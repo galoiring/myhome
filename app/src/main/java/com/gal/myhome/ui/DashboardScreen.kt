@@ -107,6 +107,7 @@ import com.gal.myhome.SliderCtl
 import com.gal.myhome.StepCtl
 import com.gal.myhome.TileKind
 import com.gal.myhome.TileUi
+import com.gal.myhome.UpdateState
 import com.gal.myhome.YlRef
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
@@ -284,11 +285,23 @@ private fun HeaderRow(
                 modifier = Modifier.padding(end = 4.dp),
             )
         }
-        IconButton(onClick = onOpenSettings) {
-            Icon(
-                Icons.Rounded.Settings, contentDescription = "Settings",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Box {
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    Icons.Rounded.Settings, contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (vm.updateState is UpdateState.Available) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 6.dp, end = 6.dp)
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error)
+                )
+            }
         }
     }
 }

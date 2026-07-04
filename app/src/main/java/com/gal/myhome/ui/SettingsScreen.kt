@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gal.myhome.BuildConfig
 import com.gal.myhome.DashboardViewModel
+import com.gal.myhome.UpdateState
 import com.gal.myhome.TileUi
 import com.gal.myhome.data.Accent
 import com.gal.myhome.data.CameraCfg
@@ -465,6 +467,86 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                     Icon(Icons.Rounded.Add, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Combine tiles into a group")
+                }
+            }
+
+            /* ---- updates ---- */
+            item { SectionHeader("Updates") }
+            item {
+                var url by remember(prefs.updateCheckUrl) { mutableStateOf(prefs.updateCheckUrl) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { url = it },
+                        label = { Text("Update server URL") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Button(
+                        onClick = { vm.updatePrefs(prefs.copy(updateCheckUrl = url.trim())) },
+                        enabled = url.trim() != prefs.updateCheckUrl,
+                    ) { Icon(Icons.Rounded.Check, "Apply") }
+                }
+            }
+            item {
+                when (val s = vm.updateState) {
+                    is UpdateState.Idle -> Row(
+                        Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Up to date (v${BuildConfig.VERSION_NAME})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { vm.checkForUpdate() }) { Text("Check now") }
+                    }
+                    is UpdateState.Checking -> Text(
+                        "Checking for updates…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    is UpdateState.Available -> Column(Modifier.padding(top = 6.dp)) {
+                        Text(
+                            "Update available: v${s.info.versionName}",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        if (s.info.notes.isNotEmpty()) {
+                            Text(
+                                s.info.notes,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                            )
+                        }
+                        Button(onClick = { vm.downloadAndInstallUpdate() }) {
+                            Text("Download & Install")
+                        }
+                    }
+                    is UpdateState.Downloading -> Row(
+                        Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("Downloading update…", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    is UpdateState.Error -> Row(
+                        Modifier.padding(top = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            s.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { vm.checkForUpdate() }) { Text("Retry") }
+                    }
                 }
             }
 

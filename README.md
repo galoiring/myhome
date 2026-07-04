@@ -96,8 +96,8 @@ adaptive icon (`app/src/main/res/mipmap-anydpi-v26/`,
 
 ## Install on the tablet
 
-Easiest, no cable: serve the built APK over LAN and download it in the
-tablet's browser:
+First install (or if the in-app updater can't reach the server): serve the
+built APK over LAN and download it in the tablet's browser:
 
 ```bash
 python3 -m http.server 8000 --directory app/build/outputs/apk/release
@@ -107,6 +107,29 @@ then on the tablet open `http://<this-machine's-LAN-IP>:8000/app-release.apk`,
 download it, tap to install, and allow "install unknown apps" for the
 browser when prompted. Because the signing key is unchanged, it updates the
 existing install in place.
+
+### In-app updates
+
+After the first install, Settings → Updates checks a small `update.json`
+manifest served next to the APK and can download + trigger the install
+itself (no browser round-trip). **Every time you build a new release**,
+bump `versionCode`/`versionName` in `app/build.gradle` and drop an
+`update.json` next to the APK before serving it:
+
+```json
+{
+  "versionCode": 5,
+  "versionName": "2.3",
+  "url": "http://<this-machine's-LAN-IP>:8000/app-release.apk",
+  "notes": "short changelog line"
+}
+```
+
+The app checks this once on launch and via the "Check now" button in
+Settings; if `versionCode` is higher than the running build, it downloads
+the APK (via `REQUEST_INSTALL_PACKAGES` + a `FileProvider`) and opens the
+system installer. The first update still needs the one-time "install
+unknown apps" grant, this time for My Home itself rather than the browser.
 
 Alternative: `adb install -r app/build/outputs/apk/release/app-release.apk`
 over USB or Wireless debugging.
