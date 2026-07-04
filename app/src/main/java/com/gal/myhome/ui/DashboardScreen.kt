@@ -702,17 +702,41 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                     onSelectMode = { v -> tile.modeControl?.let { vm.sendChars(it.targets, v) } },
                 )
                 val soloStepper = tile.controls.count { it is StepCtl } == 1
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    tile.controls.forEach { ControlView(it, vm, nameColor, subColor, soloStepper) }
-                    if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
-                    if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
+                // a handful of simple controls (e.g. Curtain's one visual, the
+                // purifier's speed+mode) get equal-share weighted heights so
+                // they always fit a compact tile exactly, instead of a fixed
+                // intrinsic size that would force scrolling in Half height —
+                // richer tiles (multiple sliders, sensors, chips) keep the
+                // scrollable fallback since capping their height would clip
+                val flexible = tile.controls.size <= 2 &&
+                    tile.sensors.isEmpty() && tile.chips.isEmpty()
+                if (flexible) {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        tile.controls.forEach { ctl ->
+                            Box(Modifier.weight(1f).fillMaxWidth()) {
+                                ControlView(ctl, vm, nameColor, subColor, soloStepper)
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        tile.controls.forEach { ControlView(it, vm, nameColor, subColor, soloStepper) }
+                        if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
+                        if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
+                    }
                 }
             }
         }
@@ -978,7 +1002,9 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
     var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
     val open = (drag ?: ctl.value).coerceIn(0f, 100f)
 
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    // fills whatever height the tile gives it (Half-height tiles included)
+    // instead of a fixed size that would force scrolling in a compact tile
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (open <= 1f) "Closed" else "${open.roundToInt()}% open",
@@ -999,7 +1025,7 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(80.dp)
+                .weight(1f)
                 .clip(RoundedCornerShape(18.dp))
                 .pointerInput(ctl.id) {
                     detectHorizontalDragGestures(

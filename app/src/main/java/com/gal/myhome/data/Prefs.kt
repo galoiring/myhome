@@ -49,16 +49,15 @@ private val DEFAULT_ROOMS = mapOf(
 // height); Curtain pairs with the purifier's controls the same way, so both
 // actually render short instead of silently reverting to Normal height (a
 // lone unpaired Half-height tile has no matching neighbor to share a column
-// with, so it would otherwise just render at full height).
+// with, so it would otherwise just render at full height). Both fit without
+// scrolling because DashboardScreen sizes their (few, simple) controls with
+// equal-share weights rather than a fixed/intrinsic height.
 private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
     "s:192.168.68.77:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "s:192.168.68.77:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
-    // Curtain's window art and the purifier's speed+mode controls both need
-    // close to full row height to render without clipping/scrolling — no
-    // half-height pairing for either, just modest width
-    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
-    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
 )
 
 data class YeelightCfg(val ip: String, val name: String)
