@@ -45,6 +45,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/** URLs currently held open by a fullscreen [CameraLiveView]. The dashboard
+ * tile's periodic snapshot poller checks this so it never opens a second,
+ * competing connection to the same rebroadcast stream while the live view
+ * is on screen. */
+private object LiveViewGuard {
+    val activeUrls: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+}
+
 /** Many RTSP rebroadcasters (Scrypted included) only speak RTP-over-TCP
  * interleaved mode reliably across NAT/Wi-Fi — the default UDP transport
  * ExoPlayer tries first often black-screens silently on mobile networks. */
@@ -86,7 +94,9 @@ fun CameraLiveView(name: String, url: String, onClose: () -> Unit) {
                 }
             }
             player.addListener(listener)
+            LiveViewGuard.activeUrls.add(url)
             onDispose {
+                LiveViewGuard.activeUrls.remove(url)
                 player.removeListener(listener)
                 player.release()
             }
@@ -172,6 +182,10 @@ fun CameraSnapshotBox(url: String, modifier: Modifier = Modifier, refreshMs: Lon
     LaunchedEffect(url, textureView) {
         val tv = textureView ?: return@LaunchedEffect
         while (isActive) {
+            if (url in LiveViewGuard.activeUrls) {
+                delay(2000)
+                continue
+            }
             var player: ExoPlayer? = null
             try {
                 player = ExoPlayer.Builder(context).build().apply {
