@@ -79,10 +79,10 @@ private fun App(vm: DashboardViewModel = viewModel()) {
         }
     }
     var wokenAt by rememberSaveable { mutableLongStateOf(0L) }
-    val showNight = prefs.nightMode && inNightWindow(prefs, now) &&
-            (now.time - wokenAt > NIGHT_WAKE_MS)
+    val inNight = prefs.nightMode && inNightWindow(prefs, now)
+    val showNight = inNight && (now.time - wokenAt > NIGHT_WAKE_MS)
 
-    LaunchedEffect(prefs.keepScreenOn, showNight) {
+    LaunchedEffect(prefs.keepScreenOn, showNight, inNight) {
         val window = (view.context as ComponentActivity).window
         if (showNight) {
             // near-black backlight; also let the system sleep if it wants to
@@ -90,7 +90,10 @@ private fun App(vm: DashboardViewModel = viewModel()) {
             window.attributes = window.attributes.apply { screenBrightness = 0.01f }
         } else {
             window.attributes = window.attributes.apply {
-                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                // woken during the night window: readable but easy on 3am
+                // eyes, instead of jumping straight back to full daylight
+                screenBrightness = if (inNight) 0.35f
+                else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             }
             if (prefs.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -108,7 +111,7 @@ private fun App(vm: DashboardViewModel = viewModel()) {
         }
     }
 
-    MyHomeTheme(prefs) {
+    MyHomeTheme(prefs, forceDark = inNight) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,

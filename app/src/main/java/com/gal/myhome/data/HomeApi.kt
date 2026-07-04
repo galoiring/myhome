@@ -74,6 +74,31 @@ class HomeApi {
         val o = JSONObject(getBody("/api/weather"))
         val cur = o.getJSONObject("current")
         val daily = o.getJSONObject("daily")
+
+        // hourly forecast: everything after the current hour ("time" entries
+        // are local ISO like 2026-07-05T14:00 — string compare works). Absent
+        // until the server is updated to request hourly data; optJSONObject
+        // keeps old-server responses parsing fine.
+        val hours = mutableListOf<HourForecast>()
+        o.optJSONObject("hourly")?.let { hourly ->
+            val times = hourly.getJSONArray("time")
+            val temps = hourly.getJSONArray("temperature_2m")
+            val codes = hourly.getJSONArray("weather_code")
+            val rains = hourly.optJSONArray("precipitation_probability")
+            val nowIso = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
+                .format(java.util.Date())
+            for (i in 0 until times.length()) {
+                val t = times.getString(i)
+                if (t <= nowIso || hours.size >= 6) continue
+                hours.add(HourForecast(
+                    hour = t.substring(11, 13).toInt(),
+                    temp = temps.getDouble(i),
+                    code = codes.getInt(i),
+                    rain = rains?.optInt(i) ?: 0,
+                ))
+            }
+        }
+
         Weather(
             temp = cur.getDouble("temperature_2m"),
             feels = cur.getDouble("apparent_temperature"),
@@ -82,6 +107,8 @@ class HomeApi {
             wind = cur.getDouble("wind_speed_10m"),
             hi = daily.getJSONArray("temperature_2m_max").getDouble(0),
             lo = daily.getJSONArray("temperature_2m_min").getDouble(0),
+            rainToday = daily.optJSONArray("precipitation_probability_max")?.optInt(0),
+            hours = hours,
         )
     }
 

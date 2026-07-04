@@ -28,7 +28,10 @@ const WEATHER_LON = process.env.WEATHER_LON || '34.65';
 const WEATHER_URL =
   `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}` +
   '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m' +
-  '&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1';
+  '&hourly=temperature_2m,weather_code,precipitation_probability' +
+  '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max' +
+  // 2 days of hourly so "next 6 hours" still works late in the evening
+  '&timezone=auto&forecast_days=2';
 let weatherCache = { ts: 0, body: null };
 
 function hapRequest(method, pathName, body) {

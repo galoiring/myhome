@@ -64,6 +64,13 @@ data class ServerSettings(
     var shelliesRaw: String = "[]",
 )
 
+data class HourForecast(
+    val hour: Int, // 0-23, local time
+    val temp: Double,
+    val code: Int,
+    val rain: Int, // precipitation probability %
+)
+
 data class Weather(
     val temp: Double,
     val feels: Double,
@@ -72,6 +79,9 @@ data class Weather(
     val wind: Double,
     val hi: Double,
     val lo: Double,
+    // empty / null while the server still runs the pre-forecast API
+    val rainToday: Int? = null,
+    val hours: List<HourForecast> = emptyList(),
 )
 
 data class Target(val aid: Int, val iid: Int)

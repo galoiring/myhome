@@ -58,8 +58,10 @@ private fun accentSchemes(accent: Accent) = when (accent) {
 }
 
 @Composable
-fun MyHomeTheme(prefs: Prefs, content: @Composable () -> Unit) {
-    val dark = when (prefs.themeMode) {
+fun MyHomeTheme(prefs: Prefs, forceDark: Boolean = false, content: @Composable () -> Unit) {
+    // forceDark: the night window overrides the theme choice — a wall tablet
+    // woken at 3am should never blast the daytime light theme
+    val dark = forceDark || when (prefs.themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true

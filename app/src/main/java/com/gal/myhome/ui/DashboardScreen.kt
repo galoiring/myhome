@@ -37,7 +37,9 @@ import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Check
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.ToggleOn
+import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Widgets
@@ -116,6 +119,7 @@ import com.gal.myhome.UpdateState
 import com.gal.myhome.YlRef
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
+import com.gal.myhome.data.HourForecast
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
 import com.gal.myhome.data.TileWidth
@@ -350,11 +354,26 @@ private fun WeatherStrip(w: Weather?, indoor: Double?) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    WeatherStat("⬆", "${w.hi.roundToInt()}°")
-                    WeatherStat("⬇", "${w.lo.roundToInt()}°")
-                    WeatherStat("💧", "${w.humidity}%")
-                    WeatherStat("💨", "${w.wind.roundToInt()} km/h")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WeatherStat(Icons.Rounded.ArrowUpward, "${w.hi.roundToInt()}°")
+                    WeatherStat(Icons.Rounded.ArrowDownward, "${w.lo.roundToInt()}°")
+                    WeatherStat(Icons.Rounded.WaterDrop, "${w.humidity}%")
+                    // rain chance beats wind speed for "do I close the windows"
+                    w.rainToday?.let { WeatherStat(Icons.Rounded.Umbrella, "$it%") }
+                }
+            }
+            if (w.hours.isNotEmpty()) {
+                Box(
+                    Modifier
+                        .height(34.dp)
+                        .width(1.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+                    w.hours.forEach { h -> HourCell(h) }
                 }
             }
         }
@@ -390,14 +409,38 @@ private fun WeatherStrip(w: Weather?, indoor: Double?) {
 }
 
 @Composable
-private fun WeatherStat(icon: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(icon, style = MaterialTheme.typography.labelSmall)
+private fun WeatherStat(icon: ImageVector, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Icon(icon, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             value,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun HourCell(h: HourForecast) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "%02d".format(h.hour),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(wmoInfo(h.code).first, fontSize = 15.sp)
+        Text(
+            "${h.temp.roundToInt()}°",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        if (h.rain >= 20) {
+            Text(
+                "${h.rain}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF4A9BD9),
+            )
+        }
     }
 }
 
@@ -803,14 +846,14 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                     onSelectMode = { v -> tile.modeControl?.let { vm.sendChars(it.targets, v) } },
                 )
                 val soloStepper = tile.controls.count { it is StepCtl } == 1
-                // a handful of simple controls (e.g. Curtain's one visual, the
-                // purifier's speed+mode) get equal-share weighted heights so
-                // they always fit a compact tile exactly, instead of a fixed
-                // intrinsic size that would force scrolling in Half height —
-                // richer tiles (multiple sliders, sensors, chips) keep the
-                // scrollable fallback since capping their height would clip
-                val flexible = tile.controls.size <= 2 &&
-                    tile.sensors.isEmpty() && tile.chips.isEmpty()
+                val dimControls = tile.canToggle && !tile.isOn
+                // a handful of simple controls (Curtain's one visual, the
+                // purifier's speed+mode, the AC's fan+setpoint) get
+                // equal-share weighted heights so they fill the tile exactly —
+                // no dead space and no scrolling in Half height — with sensor
+                // readings on a natural-height bottom row. Chip-bearing tiles
+                // keep the scrollable fallback since capping would clip them
+                val flexible = tile.controls.size <= 3 && tile.chips.isEmpty()
                 if (flexible) {
                     Column(
                         Modifier
@@ -820,10 +863,14 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                         verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         tile.controls.forEach { ctl ->
-                            Box(Modifier.weight(1f).fillMaxWidth()) {
-                                ControlView(ctl, vm, nameColor, subColor, soloStepper)
+                            Box(
+                                Modifier.weight(1f).fillMaxWidth(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls)
                             }
                         }
+                        if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
                     }
                 } else {
                     Column(
@@ -834,7 +881,9 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
-                        tile.controls.forEach { ControlView(it, vm, nameColor, subColor, soloStepper) }
+                        tile.controls.forEach {
+                            ControlView(it, vm, nameColor, subColor, soloStepper, dimControls)
+                        }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
                         if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
                     }
@@ -933,17 +982,25 @@ private fun ControlView(
     onColor: Color,
     subColor: Color,
     soloStepper: Boolean = false,
+    dim: Boolean = false,
 ) {
+    // controls on an off tile fade out so on/off reads at a glance from
+    // across the room — a bold 100% brightness bar on an off light lies
+    val c = if (dim) onColor.copy(alpha = .45f) else onColor
+    val s = if (dim) subColor.copy(alpha = .45f) else subColor
     when (ctl) {
-        is SliderCtl -> SliderRow(ctl, vm, onColor, subColor)
-        is SegCtl -> SegRow(ctl, vm, onColor, subColor)
-        is StepCtl -> StepperRow(ctl, vm, onColor, subColor, big = soloStepper)
-        is CurtainCtl -> CurtainRow(ctl, vm, onColor, subColor)
+        is SliderCtl -> SliderRow(ctl, vm, c, s, dim)
+        is SegCtl -> SegRow(ctl, vm, c, s)
+        is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
+        is CurtainCtl -> CurtainRow(ctl, vm, c, s)
     }
 }
 
 @Composable
-private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+private fun SliderRow(
+    ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color,
+    dim: Boolean = false,
+) {
     var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
     val shown = drag ?: ctl.value
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -966,9 +1023,16 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, su
                     .height(12.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(
-                        if (ctl.warm) Brush.horizontalGradient(
-                            listOf(Color(0xFFBCD9FF), Color(0xFFFFF3DA), Color(0xFFFFB84D))
-                        ) else Brush.horizontalGradient(listOf(subColor.copy(alpha = 0.22f), subColor.copy(alpha = 0.22f)))
+                        if (ctl.warm) {
+                            val a = if (dim) 0.35f else 1f
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFFBCD9FF).copy(alpha = a),
+                                    Color(0xFFFFF3DA).copy(alpha = a),
+                                    Color(0xFFFFB84D).copy(alpha = a),
+                                )
+                            )
+                        } else Brush.horizontalGradient(listOf(subColor.copy(alpha = 0.22f), subColor.copy(alpha = 0.22f)))
                     )
             )
             if (!ctl.warm) {
