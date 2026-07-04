@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Curtains
 import androidx.compose.material.icons.rounded.Cyclone
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -110,9 +112,6 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.ln
 import kotlin.math.roundToInt
 
 /* signature "on" tints, independent of the dynamic palette so a lit tile
@@ -216,12 +215,12 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            else -> AdaptiveGrid(
-                count = tiles.size,
+            else -> RoomGroupedGrid(
+                tiles = tiles,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 10.dp),
-            ) { i -> TileCard(tiles[i], vm, onOpenCamera = { liveCam = it }) }
+            ) { t -> TileCard(t, vm, onOpenCamera = { liveCam = it }) }
         }
         liveCam?.let { cam ->
             CameraLiveView(name = cam.name, url = cam.url, onClose = { liveCam = null })
@@ -358,60 +357,109 @@ private fun WeatherStat(icon: String, value: String) {
     }
 }
 
-/* ---------- adaptive no-scroll grid ---------- */
+/* ---------- room-grouped, no-scroll grid ---------- */
+
+private class RoomRow(val label: String?, val tiles: List<TileUi>)
+
+// consecutive same-room runs (the tile list is already room-priority sorted);
+// small rooms (<=2 tiles) are merged onto a shared row instead of getting a
+// near-empty row of their own — e.g. Bedroom's single light shares a row
+// with Baby Room rather than each claiming a full-width row.
+private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
+    data class Run(val room: Room?, val items: List<TileUi>)
+    val runs = mutableListOf<Run>()
+    var i = 0
+    while (i < tiles.size) {
+        val room = tiles[i].room
+        var j = i
+        while (j < tiles.size && tiles[j].room == room) j++
+        runs.add(Run(room, tiles.subList(i, j)))
+        i = j
+    }
+
+    val rows = mutableListOf<RoomRow>()
+    var bufTiles = mutableListOf<TileUi>()
+    var bufRooms = mutableListOf<Room>()
+    var bufHasUnlabeled = false
+    fun flush() {
+        if (bufTiles.isNotEmpty()) {
+            val label = if (bufRooms.isEmpty()) null
+            else bufRooms.distinct().joinToString(" · ") { it.label }
+            rows.add(RoomRow(label, bufTiles))
+            bufTiles = mutableListOf()
+            bufRooms = mutableListOf()
+            bufHasUnlabeled = false
+        }
+    }
+    for (run in runs) {
+        val labelableRoom = run.room?.takeIf { it != Room.OTHER }
+        when {
+            run.items.size >= 3 -> {
+                flush()
+                rows.add(RoomRow(labelableRoom?.label, run.items))
+            }
+            // unassigned devices never share a row with a named room, so a
+            // curated room's row stays exactly that room (or merged rooms)
+            labelableRoom == null -> {
+                flush()
+                bufTiles.addAll(run.items)
+                bufHasUnlabeled = true
+            }
+            else -> {
+                if (bufHasUnlabeled) flush()
+                bufTiles.addAll(run.items)
+                bufRooms.add(labelableRoom)
+            }
+        }
+    }
+    flush()
+    return rows
+}
 
 @Composable
-fun AdaptiveGrid(
-    count: Int,
+fun RoomGroupedGrid(
+    tiles: List<TileUi>,
     modifier: Modifier = Modifier,
-    tile: @Composable (Int) -> Unit,
+    tileContent: @Composable (TileUi) -> Unit,
 ) {
     BoxWithConstraints(modifier) {
         val gap = 12.dp
         if (maxHeight > maxWidth) {
-            // portrait fallback: normal scrolling grid
+            // portrait fallback: normal scrolling grid, no room grouping
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(240.dp),
                 horizontalArrangement = Arrangement.spacedBy(gap),
                 verticalArrangement = Arrangement.spacedBy(gap),
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
-                items(count) { i -> tile(i) }
+                items(tiles.size) { i -> tileContent(tiles[i]) }
             }
             return@BoxWithConstraints
         }
-        // pick the cols × rows split whose tile shape is closest to ~1.25 w/h
-        var bestCols = 1
-        var bestScore = Double.NEGATIVE_INFINITY
-        for (cols in 1..count) {
-            val rows = ceil(count / cols.toFloat()).toInt()
-            val tw = (maxWidth - gap * (cols - 1)) / cols
-            val th = (maxHeight - gap * (rows - 1)) / rows
-            if (tw < 170.dp && cols > 1) continue
-            val score = -abs(ln((tw / th) / 1.25))
-            if (score > bestScore) {
-                bestScore = score
-                bestCols = cols
-            }
-        }
-        val cols = bestCols
-        val rows = ceil(count / cols.toFloat()).toInt()
+        val rows = groupIntoRows(tiles)
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            for (r in 0 until rows) {
-                Row(
+            for (row in rows) {
+                Column(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(gap),
                 ) {
-                    for (c in 0 until cols) {
-                        val i = r * cols + c
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        ) {
-                            if (i < count) tile(i)
+                    if (row.label != null) {
+                        Text(
+                            row.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 2.dp, bottom = 6.dp),
+                        )
+                    }
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        row.tiles.forEach { t ->
+                            Box(Modifier.weight(1f).fillMaxHeight()) { tileContent(t) }
                         }
                     }
                 }
@@ -548,9 +596,9 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(top = 8.dp)
+                        .padding(top = 10.dp)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(7.dp, Alignment.Bottom),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     tile.controls.forEach { ControlView(it, vm, nameColor, subColor) }
                     if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
@@ -601,15 +649,7 @@ private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boole
                 )
             }
         }
-        // subtle room tag; living-room tiles (the default view) stay untagged
-        if (tile.room != null && tile.room != Room.LIVING) {
-            Text(
-                tile.room.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = subColor,
-                modifier = Modifier.align(Alignment.Top).padding(top = 2.dp),
-            )
-        }
+        // room is now shown as a row-level label in RoomGroupedGrid, not per tile
     }
 }
 
@@ -835,6 +875,7 @@ private fun ChipsRow(chips: List<ChipUi>, vm: DashboardViewModel) {
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         chips.forEach { chip ->
+            val isMoonlight = chip.yl?.prop == "moon"
             FilterChip(
                 selected = chip.on,
                 onClick = {
@@ -843,6 +884,14 @@ private fun ChipsRow(chips: List<ChipUi>, vm: DashboardViewModel) {
                     else vm.sendChars(chip.targets, if (chip.isActive) (if (v) 1 else 0) else v)
                 },
                 label = { Text(chip.label, style = MaterialTheme.typography.labelMedium) },
+                leadingIcon = if (isMoonlight) {
+                    { Icon(Icons.Rounded.Bedtime, null, Modifier.size(16.dp)) }
+                } else null,
+                colors = if (isMoonlight) FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0xFF3A3563),
+                    selectedLabelColor = Color(0xFFE3DFFF),
+                    selectedLeadingIconColor = Color(0xFFC9C2FF),
+                ) else FilterChipDefaults.filterChipColors(),
             )
         }
     }
