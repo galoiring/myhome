@@ -21,8 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,10 +43,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,10 +62,15 @@ import com.gal.myhome.BuildConfig
 import com.gal.myhome.DashboardViewModel
 import com.gal.myhome.TileUi
 import com.gal.myhome.data.Accent
+import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
 import com.gal.myhome.data.Density
+import com.gal.myhome.data.Room
 import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.ThemeMode
+import com.gal.myhome.data.YeelightCfg
+import com.gal.myhome.data.YlFound
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -218,6 +228,121 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                     vm.updatePrefs(prefs.copy(hapticFeedback = it))
                 }
             }
+            item {
+                SwitchRow(
+                    "Night mode",
+                    "Black screen on a schedule; tap to wake for a minute",
+                    prefs.nightMode,
+                ) { vm.updatePrefs(prefs.copy(nightMode = it)) }
+            }
+            if (prefs.nightMode) {
+                item {
+                    HourStepperRow("From", prefs.nightStartHour) {
+                        vm.updatePrefs(prefs.copy(nightStartHour = it))
+                    }
+                }
+                item {
+                    HourStepperRow("Until", prefs.nightEndHour) {
+                        vm.updatePrefs(prefs.copy(nightEndHour = it))
+                    }
+                }
+            }
+
+            /* ---- yeelight LAN ---- */
+            item { SectionHeader("Yeelight (LAN)") }
+            item {
+                Text(
+                    "Direct LAN control, independent of Homebridge. Enable \"LAN Control\" for the device in the Yeelight app first.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+            }
+            items(prefs.yeelights.size) { i ->
+                val cfg = prefs.yeelights[i]
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(cfg.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            cfg.ip,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = {
+                        vm.updatePrefs(prefs.copy(yeelights = prefs.yeelights - cfg))
+                    }) { Icon(Icons.Rounded.Delete, "Remove", Modifier.size(19.dp)) }
+                }
+            }
+            item {
+                var showAdd by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { showAdd = true }, modifier = Modifier.padding(top = 4.dp)) {
+                    Icon(Icons.Rounded.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Add Yeelight")
+                }
+                if (showAdd) {
+                    AddYeelightDialog(
+                        vm = vm,
+                        onDismiss = { showAdd = false },
+                        onAdd = { cfg ->
+                            vm.updatePrefs(prefs.copy(yeelights = prefs.yeelights + cfg))
+                            showAdd = false
+                        },
+                    )
+                }
+            }
+
+            /* ---- cameras ---- */
+            item { SectionHeader("Cameras") }
+            item {
+                Text(
+                    "Live view via an RTSP stream. For the Ring doorbell, copy the RTSP Rebroadcast URL from Scrypted (camera → Settings → Streams).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+            }
+            items(prefs.cameras.size) { i ->
+                val cfg = prefs.cameras[i]
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(cfg.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            cfg.url,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    IconButton(onClick = {
+                        vm.updatePrefs(prefs.copy(cameras = prefs.cameras - cfg))
+                    }) { Icon(Icons.Rounded.Delete, "Remove", Modifier.size(19.dp)) }
+                }
+            }
+            item {
+                var showAdd by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { showAdd = true }, modifier = Modifier.padding(top = 4.dp)) {
+                    Icon(Icons.Rounded.Add, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Add camera")
+                }
+                if (showAdd) {
+                    AddCameraDialog(
+                        onDismiss = { showAdd = false },
+                        onAdd = { cfg ->
+                            vm.updatePrefs(prefs.copy(cameras = prefs.cameras + cfg))
+                            showAdd = false
+                        },
+                    )
+                }
+            }
 
             /* ---- tiles ---- */
             item { SectionHeader("Tiles") }
@@ -267,6 +392,21 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                     if (tile.isGroup) {
                         TextButton(onClick = { vm.ungroup(tile) }) { Text("Ungroup") }
                     }
+                    AssistChip(
+                        onClick = {
+                            val cur = prefs.roomFor(tile.key)
+                            val next = Room.entries[
+                                ((cur?.ordinal ?: -1) + 1) % Room.entries.size]
+                            vm.setRoom(tile.key, next)
+                        },
+                        label = {
+                            Text(
+                                prefs.roomFor(tile.key)?.label ?: "Room…",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
                     IconButton(onClick = { renameTile = tile }) {
                         Icon(Icons.Rounded.Edit, "Rename", Modifier.size(19.dp))
                     }
@@ -378,6 +518,133 @@ private fun LabeledSeg(
             }
         }
     }
+}
+
+@Composable
+private fun HourStepperRow(label: String, value: Int, onChange: (Int) -> Unit) {
+    Row(
+        Modifier.padding(vertical = 4.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.width(112.dp),
+        )
+        FilledTonalIconButton(
+            onClick = { onChange((value + 23) % 24) },
+            modifier = Modifier.size(36.dp),
+        ) { Icon(Icons.Rounded.Remove, "earlier", Modifier.size(18.dp)) }
+        Text(
+            "%02d:00".format(value),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.width(80.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        FilledTonalIconButton(
+            onClick = { onChange((value + 1) % 24) },
+            modifier = Modifier.size(36.dp),
+        ) { Icon(Icons.Rounded.Add, "later", Modifier.size(18.dp)) }
+    }
+}
+
+@Composable
+private fun AddYeelightDialog(
+    vm: DashboardViewModel,
+    onDismiss: () -> Unit,
+    onAdd: (YeelightCfg) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var ip by remember { mutableStateOf("") }
+    var found by remember { mutableStateOf<List<YlFound>?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Yeelight") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("Name") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.padding(4.dp))
+                OutlinedTextField(
+                    value = ip, onValueChange = { ip = it },
+                    label = { Text("IP address") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    onClick = {
+                        searching = true
+                        scope.launch {
+                            found = vm.discoverYeelights()
+                            searching = false
+                        }
+                    },
+                    enabled = !searching,
+                ) { Text(if (searching) "Searching…" else "Discover on network") }
+                found?.let { list ->
+                    if (list.isEmpty()) {
+                        Text(
+                            "Nothing found — check that LAN Control is enabled in the Yeelight app.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        list.forEach { f ->
+                            TextButton(onClick = { ip = f.ip }) {
+                                Text("${f.ip} (${f.model})")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onAdd(YeelightCfg(ip.trim(), name.trim().ifEmpty { "Yeelight" })) },
+                enabled = ip.trim().matches(Regex("""\d{1,3}(\.\d{1,3}){3}""")),
+            ) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun AddCameraDialog(onDismiss: () -> Unit, onAdd: (CameraCfg) -> Unit) {
+    var name by remember { mutableStateOf("Doorbell") }
+    var url by remember { mutableStateOf("rtsp://192.168.68.75:") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add camera") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("Name") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.padding(4.dp))
+                OutlinedTextField(
+                    value = url, onValueChange = { url = it },
+                    label = { Text("RTSP URL") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onAdd(CameraCfg(name.trim().ifEmpty { "Camera" }, url.trim())) },
+                enabled = url.trim().startsWith("rtsp://") && url.trim().length > 10,
+            ) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

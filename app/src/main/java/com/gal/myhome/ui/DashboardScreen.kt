@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.ToggleOn
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.CircularProgressIndicator
@@ -99,7 +100,10 @@ import com.gal.myhome.SliderCtl
 import com.gal.myhome.StepCtl
 import com.gal.myhome.TileKind
 import com.gal.myhome.TileUi
+import com.gal.myhome.YlRef
+import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
+import com.gal.myhome.data.Room
 import com.gal.myhome.data.Weather
 import com.gal.myhome.data.wmoInfo
 import kotlinx.coroutines.delay
@@ -111,16 +115,29 @@ import kotlin.math.ceil
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
-/* signature "on" tint — warm amber, independent of the dynamic palette so a
-   lit tile always reads as "on" at a glance, matching the web dashboard */
-private object OnTint {
-    val tileLight = Color(0xFFFFF2CC)
-    val tileDark = Color(0xFF4A3A12)
-    val contentLight = Color(0xFF4A3A00)
-    val contentDark = Color(0xFFFFE9A8)
-    val iconCircle = Color(0xFFFFCF47)
-    val iconTint = Color(0xFF4A3A00)
-}
+/* signature "on" tints, independent of the dynamic palette so a lit tile
+   always reads at a glance: warm amber for lights, cool blue for climate */
+private class TintSet(
+    val tileLight: Color, val tileDark: Color,
+    val contentLight: Color, val contentDark: Color,
+    val iconCircle: Color, val iconTint: Color,
+)
+
+private val AmberTint = TintSet(
+    tileLight = Color(0xFFFFF2CC), tileDark = Color(0xFF4A3A12),
+    contentLight = Color(0xFF4A3A00), contentDark = Color(0xFFFFE9A8),
+    iconCircle = Color(0xFFFFCF47), iconTint = Color(0xFF4A3A00),
+)
+
+private val CoolTint = TintSet(
+    tileLight = Color(0xFFD8E9FF), tileDark = Color(0xFF16324A),
+    contentLight = Color(0xFF0A3355), contentDark = Color(0xFFBBD9FF),
+    iconCircle = Color(0xFF7FB5FF), iconTint = Color(0xFF0A2A47),
+)
+
+private fun tintFor(kind: TileKind): TintSet =
+    if (kind == TileKind.AC || kind == TileKind.PURIFIER || kind == TileKind.FAN) CoolTint
+    else AmberTint
 
 fun tileIcon(kind: TileKind): ImageVector = when (kind) {
     TileKind.LIGHT -> Icons.Rounded.Lightbulb
@@ -131,6 +148,7 @@ fun tileIcon(kind: TileKind): ImageVector = when (kind) {
     TileKind.SWITCH -> Icons.Rounded.ToggleOn
     TileKind.SENSOR -> Icons.Rounded.Thermostat
     TileKind.CURTAIN -> Icons.Rounded.Curtains
+    TileKind.CAMERA -> Icons.Rounded.Videocam
     TileKind.OTHER -> Icons.Rounded.Widgets
 }
 
@@ -186,6 +204,7 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
         )
 
         val tiles = ui.tiles.filter { !it.hidden }
+        var liveCam by remember { mutableStateOf<CameraCfg?>(null) }
         when {
             !ui.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -202,7 +221,10 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 10.dp),
-            ) { i -> TileCard(tiles[i], vm) }
+            ) { i -> TileCard(tiles[i], vm, onOpenCamera = { liveCam = it }) }
+        }
+        liveCam?.let { cam ->
+            CameraLiveView(name = cam.name, url = cam.url, onClose = { liveCam = null })
         }
     }
 }
@@ -401,13 +423,14 @@ fun AdaptiveGrid(
 /* ---------- tile ---------- */
 
 @Composable
-fun TileCard(tile: TileUi, vm: DashboardViewModel) {
+fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> Unit = {}) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    val onTile = if (dark) OnTint.tileDark else OnTint.tileLight
-    val onContent = if (dark) OnTint.contentDark else OnTint.contentLight
+    val tint = tintFor(tile.kind)
+    val onTile = if (dark) tint.tileDark else tint.tileLight
+    val onContent = if (dark) tint.contentDark else tint.contentLight
     val bg by animateColorAsState(
         if (tile.isOn) onTile else MaterialTheme.colorScheme.surfaceContainerLow,
         label = "tileBg",
@@ -416,10 +439,11 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel) {
     val subColor = if (tile.isOn) onContent.copy(alpha = .75f)
     else MaterialTheme.colorScheme.onSurfaceVariant
 
+    val tappable = tile.canToggle || tile.camera != null
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (pressed && tile.canToggle) 0.97f else 1f,
+        if (pressed && tappable) 0.97f else 1f,
         label = "tilePress",
     )
 
@@ -427,9 +451,9 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel) {
     Surface(
         onClick = {
             if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            vm.toggleTile(tile)
+            tile.camera?.let { onOpenCamera(it) } ?: vm.toggleTile(tile)
         },
-        enabled = tile.canToggle,
+        enabled = tappable,
         interactionSource = interaction,
         shape = RoundedCornerShape(22.dp),
         color = bg,
@@ -512,13 +536,14 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel) {
 
 @Composable
 private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boolean) {
+    val tint = tintFor(tile.kind)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (big) 12.dp else 10.dp),
     ) {
         Surface(
             shape = CircleShape,
-            color = if (tile.isOn) OnTint.iconCircle
+            color = if (tile.isOn) tint.iconCircle
             else MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.size(if (big) 50.dp else 40.dp),
         ) {
@@ -526,11 +551,11 @@ private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boole
                 Icon(
                     tileIcon(tile.kind), null,
                     Modifier.size(if (big) 26.dp else 21.dp),
-                    tint = if (tile.isOn) OnTint.iconTint else nameColor,
+                    tint = if (tile.isOn) tint.iconTint else nameColor,
                 )
             }
         }
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(
                 tile.name,
                 style = MaterialTheme.typography.titleMedium,
@@ -548,6 +573,15 @@ private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boole
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        // subtle room tag; living-room tiles (the default view) stay untagged
+        if (tile.room != null && tile.room != Room.LIVING) {
+            Text(
+                tile.room.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = subColor,
+                modifier = Modifier.align(Alignment.Top).padding(top = 2.dp),
+            )
         }
     }
 }
@@ -597,7 +631,10 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, su
                 value = shown.coerceIn(ctl.min, ctl.max),
                 onValueChange = { drag = it },
                 onValueChangeFinished = {
-                    drag?.let { vm.sendChars(ctl.targets, it.roundToInt()) }
+                    drag?.let { v ->
+                        if (ctl.yl != null) vm.setYeelight(ctl.yl, v.roundToInt())
+                        else vm.sendChars(ctl.targets, v.roundToInt())
+                    }
                     drag = null
                 },
                 valueRange = ctl.min..ctl.max,
@@ -775,7 +812,8 @@ private fun ChipsRow(chips: List<ChipUi>, vm: DashboardViewModel) {
                 selected = chip.on,
                 onClick = {
                     val v = !chip.on
-                    vm.sendChars(chip.targets, if (chip.isActive) (if (v) 1 else 0) else v)
+                    if (chip.yl != null) vm.setYeelight(chip.yl, v)
+                    else vm.sendChars(chip.targets, if (chip.isActive) (if (v) 1 else 0) else v)
                 },
                 label = { Text(chip.label, style = MaterialTheme.typography.labelMedium) },
             )

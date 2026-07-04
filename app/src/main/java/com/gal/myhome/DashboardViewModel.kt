@@ -16,14 +16,22 @@ import com.gal.myhome.data.PrefsRepo
 import com.gal.myhome.data.SVC
 import com.gal.myhome.data.ServerSettings
 import com.gal.myhome.data.ShellyDevice
+import com.gal.myhome.data.CameraCfg
+import com.gal.myhome.data.Room
 import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.Svc
 import com.gal.myhome.data.T
 import com.gal.myhome.data.Target
 import com.gal.myhome.data.Weather
+import com.gal.myhome.data.YeelightClient
+import com.gal.myhome.data.YlFound
+import com.gal.myhome.data.YlState
 import com.gal.myhome.data.asBool
 import com.gal.myhome.data.asDouble
+import com.gal.myhome.data.kelvinToWarmth
+import com.gal.myhome.data.warmthToKelvin
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,14 +43,18 @@ import kotlin.math.roundToInt
 
 /* ---------- UI models ---------- */
 
-enum class TileKind { LIGHT, AC, PURIFIER, FAN, OUTLET, SWITCH, SENSOR, CURTAIN, OTHER }
+enum class TileKind { LIGHT, AC, PURIFIER, FAN, OUTLET, SWITCH, SENSOR, CURTAIN, CAMERA, OTHER }
 enum class SensorKind { TEMP, HUMIDITY, AIR_QUALITY, PM25, OCCUPANCY, MOTION, FILTER }
+
+// routes a control to a LAN Yeelight instead of the HomeKit API
+data class YlRef(val ip: String, val prop: String) // "bright" | "ct" | "moon"
 
 sealed interface Control
 data class SliderCtl(
     val id: String, val label: String, val unit: String,
     val min: Float, val max: Float, val step: Float, val value: Float,
     val warm: Boolean, val targets: List<Target>,
+    val yl: YlRef? = null,
 ) : Control
 
 data class SegCtl(
@@ -61,6 +73,7 @@ data class CurtainCtl(val id: String, val value: Float, val targets: List<Target
 data class ChipUi(
     val id: String, val label: String, val on: Boolean,
     val isActive: Boolean, val targets: List<Target>,
+    val yl: YlRef? = null,
 )
 
 data class SensorUi(val kind: SensorKind, val value: String, val unit: String)
@@ -83,6 +96,9 @@ data class TileUi(
     val shelly: ShellyRef?,
     val toggleTargets: List<Target>,
     val toggleIsActive: Boolean,
+    val yeelight: String? = null,
+    val camera: CameraCfg? = null,
+    val room: Room? = null,
 )
 
 data class UiState(
@@ -98,6 +114,7 @@ private const val TOUCH_HOLD_MS = 5000L
 class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     private val api = HomeApi()
+    private val ylClient = YeelightClient()
     val prefsRepo = PrefsRepo(app)
     val prefs = prefsRepo.flow.stateIn(viewModelScope, SharingStarted.Eagerly, Prefs())
 
@@ -106,6 +123,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     private var accs: List<Acc> = emptyList()
     private var shellyDevs: List<ShellyDevice> = emptyList()
+    private var ylStates: Map<String, YlState?> = emptyMap()
     var serverSettings = ServerSettings()
         private set
 
@@ -118,6 +136,8 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             refreshServerSettings()
             launch { pollLoop() }
             launch { weatherLoop() }
+            // prefs changes (rooms, sort, yeelights, cameras) reshape tiles immediately
+            launch { prefs.collect { if (ui.loaded) rebuild(ui.offline) } }
         }
     }
 
@@ -140,8 +160,13 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 coroutineScope {
                     val a = async { api.accessories() }
                     val s = async { try { api.shelly() } catch (_: Exception) { shellyDevs } }
+                    // Yeelights are independent of the server; state() returns null on error
+                    val y = prefs.value.yeelights.map { cfg ->
+                        async { cfg.ip to ylClient.state(cfg.ip) }
+                    }
                     accs = a.await()
                     shellyDevs = s.await()
+                    ylStates = y.awaitAll().toMap()
                 }
                 if (!settingsLoaded.value) refreshServerSettings()
                 pruneOverrides()
@@ -182,8 +207,33 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setYeelight(ref: YlRef, value: Any) {
+        override("ylk:${ref.ip}:${ref.prop}", value)
+        rebuild(ui.offline)
+        viewModelScope.launch {
+            when (ref.prop) {
+                "bright" -> ylClient.setBright(ref.ip, (value as Number).toInt())
+                "ct" -> ylClient.setCtKelvin(ref.ip, warmthToKelvin((value as Number).toInt()))
+                "moon" -> ylClient.setMoonlight(ref.ip, value as Boolean)
+            }
+        }
+    }
+
+    suspend fun discoverYeelights(): List<YlFound> = ylClient.discover()
+
+    fun setRoom(key: String, room: Room) {
+        val p = prefs.value
+        updatePrefs(p.copy(rooms = p.rooms + (key to room)))
+        rebuild(ui.offline)
+    }
+
     fun toggleTile(tile: TileUi) {
-        if (tile.shelly != null) {
+        if (tile.yeelight != null) {
+            val on = !tile.isOn
+            override("ylk:${tile.yeelight}:power", on)
+            rebuild(ui.offline)
+            viewModelScope.launch { ylClient.setPower(tile.yeelight, on) }
+        } else if (tile.shelly != null) {
             val on = !tile.isOn
             override("sk:${tile.key}", on)
             rebuild(ui.offline)
@@ -307,6 +357,71 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
+        val p = prefs.value
+        for (cfg in p.yeelights) {
+            val key = "y:${cfg.ip}"
+            val st = ylStates[cfg.ip]
+            val on = (overrides["ylk:${cfg.ip}:power"]?.first as? Boolean) ?: st?.power ?: false
+            val bright = (overrides["ylk:${cfg.ip}:bright"]?.first as? Number)?.toInt()
+                ?: st?.bright ?: 0
+            val warmth = (overrides["ylk:${cfg.ip}:ct"]?.first as? Number)?.toInt()
+                ?: st?.let { kelvinToWarmth(it.ctK) } ?: 50
+            val moon = (overrides["ylk:${cfg.ip}:moon"]?.first as? Boolean)
+                ?: st?.moonlight ?: false
+            list.add(TileUi(
+                key = key,
+                name = serverSettings.names[key] ?: cfg.name,
+                sub = when {
+                    st == null -> "Unreachable · enable LAN Control?"
+                    on -> "$bright%"
+                    else -> "Off"
+                },
+                kind = TileKind.LIGHT,
+                isOn = on,
+                canToggle = true,
+                hidden = key in serverSettings.hidden,
+                isGroup = false,
+                origNames = listOf(cfg.name),
+                controls = listOf(
+                    SliderCtl("$key:bright", "Brightness", "%", 1f, 100f, 1f,
+                        bright.toFloat(), false, emptyList(), YlRef(cfg.ip, "bright")),
+                    SliderCtl("$key:ct", "Warmth", "", 0f, 100f, 1f,
+                        warmth.toFloat(), true, emptyList(), YlRef(cfg.ip, "ct")),
+                ),
+                chips = if (st?.moonSupported == true) listOf(
+                    ChipUi("$key:moon", "Moonlight", moon, false, emptyList(),
+                        YlRef(cfg.ip, "moon"))
+                ) else emptyList(),
+                sensors = emptyList(),
+                shelly = null,
+                toggleTargets = emptyList(),
+                toggleIsActive = false,
+                yeelight = cfg.ip,
+            ))
+        }
+        for (cfg in p.cameras) {
+            val key = "c:${cfg.name}"
+            list.add(TileUi(
+                key = key,
+                name = serverSettings.names[key] ?: cfg.name,
+                sub = "Tap for live view",
+                kind = TileKind.CAMERA,
+                isOn = false,
+                canToggle = false,
+                hidden = key in serverSettings.hidden,
+                isGroup = false,
+                origNames = listOf(cfg.name),
+                controls = emptyList(),
+                chips = emptyList(),
+                sensors = emptyList(),
+                shelly = null,
+                toggleTargets = emptyList(),
+                toggleIsActive = false,
+                camera = cfg,
+            ))
+        }
+
+        val tagged = list.map { it.copy(room = p.roomFor(it.key)) }
         val weight: (TileUi) -> Int = { t ->
             when {
                 t.isGroup -> -1
@@ -316,9 +431,11 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 else -> 3
             }
         }
-        return when (prefs.value.sortMode) {
-            SortMode.AUTO -> list.sortedBy(weight)
-            SortMode.NAME -> list.sortedBy { it.name.lowercase() }
+        return when (p.sortMode) {
+            SortMode.AUTO -> tagged.sortedWith(
+                compareBy({ it.room?.priority ?: 5 }, { weight(it) })
+            )
+            SortMode.NAME -> tagged.sortedBy { it.name.lowercase() }
         }
     }
 
@@ -369,6 +486,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         var onAny = false
         val subParts = mutableListOf<String>()
         val occCount = mutableMapOf<String, Int>()
+        val hasMultipleLights = acc.services.count { it.type == SVC.LIGHT } > 1
 
         for (svc in acc.services) {
             if (svc.type == SVC.INFO || svc.type == SVC.PROTO) continue
@@ -391,13 +509,18 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 toggleTargets = tg(if (on != null) T.ON else T.ACTIVE)
                 toggleIsActive = active != null && on == null
                 mainToggleSet = true
-            } else if (tgl != null && mainToggleSet && svc.type == SVC.LIGHT) {
+            } else if (tgl != null && mainToggleSet && svc.type == SVC.LIGHT
+                && svcName(svc, "") != acc.origName) {
+                // a chip named like the accessory duplicates the card toggle — skip it
                 chips.add(ChipUi(cid(tgl), svcName(svc, "Light"),
                     chrValue(acc.aid, tgl).asBool(), false, tg(T.ON)))
             }
 
             svc.ch(T.BRIGHT)?.let { c ->
-                controls.add(SliderCtl(cid(c), "Brightness", "%",
+                // multi-light accessories (main + moonlight): label sliders by service
+                val label = svcName(svc, "Brightness")
+                    .takeIf { hasMultipleLights && it != acc.origName } ?: "Brightness"
+                controls.add(SliderCtl(cid(c), label, "%",
                     (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
                     (c.minStep ?: 1.0).toFloat(),
                     (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.BRIGHT)))
