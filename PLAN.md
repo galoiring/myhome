@@ -104,11 +104,39 @@ Two places: the standalone SENSOR tile body (DashboardScreen.kt ~lines
 
 ## Verify & ship
 
-1. Build: `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ANDROID_HOME=/opt/homebrew/share/android-commandlinetools ./gradlew assembleRelease`
-2. Check light AND dark theme, and Half-height tiles (curtain + purifier are half-height in this layout).
-3. Release: bump `versionCode`/`versionName` in `app/build.gradle`, update
-   repo-root `update.json` AND `app/build/outputs/apk/release/update.json`,
-   then the tablet self-updates via Settings > Updates.
+All changes are app-only — nothing to deploy to the Pi backend
+(`orangepi@192.168.68.75`, `/home/orangepi/hb-dashboard`) for this work.
+
+### Build & test
+
+1. Build (on the Mac; adjust paths on another machine):
+   `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ANDROID_HOME=/opt/homebrew/share/android-commandlinetools ./gradlew assembleRelease`
+   → APK at `app/build/outputs/apk/release/app-release.apk` (signing config
+   comes from `keystore.properties` + `keystore/`, both untracked — they only
+   exist on the Mac).
+2. Check light AND dark theme, and Half-height tiles (curtain + purifier are
+   half-height in this layout).
+
+### Release & deploy to the tablet
+
+3. Bump `versionCode` AND `versionName` in `app/build.gradle`, rebuild.
+4. GitHub release (stable download URL for the update manifest):
+   `gh release create vX.Y.Z app/build/outputs/apk/release/app-release.apk --title "vX.Y.Z" --notes "..." --repo galoiring/myhome`
+   → asset lands at `https://github.com/galoiring/myhome/releases/download/vX.Y.Z/app-release.apk`
+5. Update BOTH update manifests (`{"versionCode", "versionName", "url", "notes"}`):
+   - repo-root `update.json` — what the app's default `updateCheckUrl`
+     (`raw.githubusercontent.com/galoiring/myhome/main/update.json`) serves to
+     any install; point `url` at the GitHub release asset. Commit & push it.
+   - `app/build/outputs/apk/release/update.json` — the wall tablet still has
+     the old LAN URL persisted (`http://192.168.68.51:8000/update.json`), so it
+     checks the Mac, not GitHub; point `url` at `http://192.168.68.51:8000/app-release.apk`.
+6. For the tablet: serve the APK dir from the Mac —
+   `cd app/build/outputs/apk/release && python3 -m http.server 8000`
+   (must run on the Mac since the tablet expects 192.168.68.51; note a
+   sandboxed shell can't accept inbound connections, run it unsandboxed/manually).
+7. On the tablet: Settings > Updates > Check now > Download & Install.
+   (First-ever install instead: open `http://192.168.68.51:8000/app-release.apk`
+   in the tablet browser.)
 
 Suggested order: 1 (bug) → 3 (borders, small) → 2 (curtain) → 4 (sensors) —
 each is independently shippable.
