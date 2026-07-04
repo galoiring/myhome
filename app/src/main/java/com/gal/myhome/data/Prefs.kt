@@ -54,8 +54,11 @@ private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
     "s:192.168.68.77:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "s:192.168.68.77:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
-    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    // Curtain's window art and the purifier's speed+mode controls both need
+    // close to full row height to render without clipping/scrolling — no
+    // half-height pairing for either, just modest width
+    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
 )
 
 data class YeelightCfg(val ip: String, val name: String)

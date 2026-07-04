@@ -492,15 +492,27 @@ fun RoomGroupedGrid(
         }
         val rows = groupIntoRows(tiles)
         val packedRows = rows.map { it.label to packRow(it.tiles) }
-        // one shared unit width across every row, sized so the most-constrained
-        // row exactly fills the width — sparser rows then leave trailing space
-        // instead of stretching their columns to fill the whole row
-        val unitWidth = packedRows.minOf { (_, cols) ->
+        // a shared baseline unit width, sized so the most-constrained row
+        // exactly fills the available width
+        val minUnitWidth = packedRows.minOf { (_, cols) ->
             val totalUnits = cols.sumOf { it.widthUnits }
             (maxWidth - gap * (cols.size - 1)) / totalUnits
         }
+        // a sparse row may stretch a bit past the shared baseline (capped) so
+        // it doesn't look like a mostly-empty row, but never all the way to
+        // its own natural width — that's what made a 3-tile row look
+        // oversized next to a 6-tile one before. Any width still left over
+        // is centered rather than left trailing on one side. (Computed here,
+        // outside ColumnScope below, since `maxWidth` needs the
+        // BoxWithConstraints receiver.)
+        val rowUnitWidths = packedRows.map { (_, cols) ->
+            val totalUnits = cols.sumOf { it.widthUnits }
+            val naturalWidth = (maxWidth - gap * (cols.size - 1)) / totalUnits
+            minOf(naturalWidth, minUnitWidth * 1.3f)
+        }
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            for ((label, cols) in packedRows) {
+            packedRows.forEachIndexed { rowIndex, (label, cols) ->
+                val rowUnitWidth = rowUnitWidths[rowIndex]
                 Column(
                     Modifier
                         .weight(1f)
@@ -518,10 +530,10 @@ fun RoomGroupedGrid(
                         Modifier
                             .weight(1f)
                             .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
                     ) {
                         cols.forEach { col ->
-                            val colWidth = unitWidth * col.widthUnits + gap * (col.widthUnits - 1)
+                            val colWidth = rowUnitWidth * col.widthUnits + gap * (col.widthUnits - 1)
                             Box(Modifier.width(colWidth).fillMaxHeight()) {
                                 if (col.tiles.size == 2) {
                                     Column(
@@ -987,7 +999,7 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(96.dp)
+                .height(80.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .pointerInput(ctl.id) {
                     detectHorizontalDragGestures(
