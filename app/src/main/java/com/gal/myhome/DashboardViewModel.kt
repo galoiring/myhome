@@ -18,6 +18,8 @@ import com.gal.myhome.data.ServerSettings
 import com.gal.myhome.data.ShellyDevice
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.Room
+import com.gal.myhome.data.TileHeight
+import com.gal.myhome.data.TileWidth
 import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.Svc
 import com.gal.myhome.data.T
@@ -99,6 +101,8 @@ data class TileUi(
     val yeelight: String? = null,
     val camera: CameraCfg? = null,
     val room: Room? = null,
+    val width: TileWidth = TileWidth.MEDIUM,
+    val height: TileHeight = TileHeight.NORMAL,
 )
 
 data class UiState(
@@ -224,6 +228,20 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     fun setRoom(key: String, room: Room) {
         val p = prefs.value
         updatePrefs(p.copy(rooms = p.rooms + (key to room)))
+        rebuild(ui.offline)
+    }
+
+    fun setTileWidth(key: String, width: TileWidth) {
+        val p = prefs.value
+        val cfg = p.sizeFor(key).copy(width = width)
+        updatePrefs(p.copy(tileSizes = p.tileSizes + (key to cfg)))
+        rebuild(ui.offline)
+    }
+
+    fun setTileHeight(key: String, height: TileHeight) {
+        val p = prefs.value
+        val cfg = p.sizeFor(key).copy(height = height)
+        updatePrefs(p.copy(tileSizes = p.tileSizes + (key to cfg)))
         rebuild(ui.offline)
     }
 
@@ -434,7 +452,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             ))
         }
 
-        val tagged = list.map { it.copy(room = p.roomFor(it.key)) }
+        val tagged = list.map {
+            val size = p.sizeFor(it.key)
+            it.copy(room = p.roomFor(it.key), width = size.width, height = size.height)
+        }
         // an explicit user reorder always wins; new tiles not yet placed sort to the end
         if (p.tileOrder.isNotEmpty()) {
             val orderIndex = p.tileOrder.withIndex().associate { (i, k) -> k to i }

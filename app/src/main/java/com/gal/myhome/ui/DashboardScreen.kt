@@ -106,6 +106,8 @@ import com.gal.myhome.YlRef
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
 import com.gal.myhome.data.Room
+import com.gal.myhome.data.TileHeight
+import com.gal.myhome.data.TileWidth
 import com.gal.myhome.data.Weather
 import com.gal.myhome.data.wmoInfo
 import kotlinx.coroutines.delay
@@ -416,6 +418,28 @@ private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
     return rows
 }
 
+// a column is one Normal-height tile, or two Half-height tiles of the same
+// width stacked together; a lone Half-height tile (no matching neighbor)
+// just renders at Normal height instead of leaving dead empty space below it
+private class PackedColumn(val widthUnits: Int, val tiles: List<TileUi>)
+
+private fun packRow(tiles: List<TileUi>): List<PackedColumn> {
+    val cols = mutableListOf<PackedColumn>()
+    var i = 0
+    while (i < tiles.size) {
+        val t = tiles[i]
+        val next = tiles.getOrNull(i + 1)
+        if (t.height == TileHeight.HALF && next?.height == TileHeight.HALF && next.width == t.width) {
+            cols.add(PackedColumn(t.width.units, listOf(t, next)))
+            i += 2
+        } else {
+            cols.add(PackedColumn(t.width.units, listOf(t)))
+            i += 1
+        }
+    }
+    return cols
+}
+
 @Composable
 fun RoomGroupedGrid(
     tiles: List<TileUi>,
@@ -437,21 +461,24 @@ fun RoomGroupedGrid(
             return@BoxWithConstraints
         }
         val rows = groupIntoRows(tiles)
-        // one shared tile width across every row, sized to the busiest row —
-        // a sparse row (e.g. Bedroom + Baby Room) then leaves trailing space
-        // instead of stretching its few tiles to fill the whole width
-        val maxRowCount = rows.maxOfOrNull { it.tiles.size } ?: 1
-        val tileWidth = (maxWidth - gap * (maxRowCount - 1)) / maxRowCount
+        val packedRows = rows.map { it.label to packRow(it.tiles) }
+        // one shared unit width across every row, sized so the most-constrained
+        // row exactly fills the width — sparser rows then leave trailing space
+        // instead of stretching their columns to fill the whole row
+        val unitWidth = packedRows.minOf { (_, cols) ->
+            val totalUnits = cols.sumOf { it.widthUnits }
+            (maxWidth - gap * (cols.size - 1)) / totalUnits
+        }
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            for (row in rows) {
+            for ((label, cols) in packedRows) {
                 Column(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                 ) {
-                    if (row.label != null) {
+                    if (label != null) {
                         Text(
-                            row.label,
+                            label,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 2.dp, bottom = 6.dp),
@@ -463,8 +490,21 @@ fun RoomGroupedGrid(
                             .fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(gap),
                     ) {
-                        row.tiles.forEach { t ->
-                            Box(Modifier.width(tileWidth).fillMaxHeight()) { tileContent(t) }
+                        cols.forEach { col ->
+                            val colWidth = unitWidth * col.widthUnits + gap * (col.widthUnits - 1)
+                            Box(Modifier.width(colWidth).fillMaxHeight()) {
+                                if (col.tiles.size == 2) {
+                                    Column(
+                                        Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(gap),
+                                    ) {
+                                        Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[0]) }
+                                        Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[1]) }
+                                    }
+                                } else {
+                                    tileContent(col.tiles[0])
+                                }
+                            }
                         }
                     }
                 }
@@ -484,8 +524,12 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
     val tint = tintFor(tile.kind)
     val onTile = if (dark) tint.tileDark else tint.tileLight
     val onContent = if (dark) tint.contentDark else tint.contentLight
+    // glass translucency — subtle enough that legibility from across the room
+    // isn't hurt, just enough to let the ambient background blobs show through
+    val glassAlpha = 0.90f
     val bg by animateColorAsState(
-        if (tile.isOn) onTile else MaterialTheme.colorScheme.surfaceContainerLow,
+        (if (tile.isOn) onTile else MaterialTheme.colorScheme.surfaceContainerLow)
+            .copy(alpha = glassAlpha),
         label = "tileBg",
     )
     val nameColor = if (tile.isOn) onContent else MaterialTheme.colorScheme.onSurface
@@ -499,6 +543,9 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
         if (pressed && tappable) 0.97f else 1f,
         label = "tilePress",
     )
+    val glowBrush = remember(tint, dark) {
+        Brush.radialGradient(listOf(tint.iconCircle.copy(alpha = if (dark) 0.30f else 0.22f), Color.Transparent))
+    }
 
     // the whole card is the on/off button — inner controls consume their own touches
     Surface(
@@ -508,12 +555,18 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
         },
         enabled = tappable,
         interactionSource = interaction,
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(28.dp),
         color = bg,
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
+        // soft glow wash for an active tile, clipped to the card's own rounded
+        // shape by Surface — no RenderEffect/blur() needed, works on minSdk 26
+        if (tile.isOn) {
+            Box(Modifier.fillMaxSize().background(glowBrush))
+        }
+
         if (tile.kind == TileKind.CAMERA) {
             Box(Modifier.fillMaxSize()) {
                 tile.camera?.let { cfg -> CameraSnapshotBox(cfg.url, Modifier.fillMaxSize()) }
@@ -566,9 +619,13 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                 ) {
                     val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
                     if (temp != null) {
+                        // a Small-width tile doesn't have room for the bigger scale
+                        val heroStyle = if (tile.width == TileWidth.SMALL)
+                            MaterialTheme.typography.displaySmall
+                        else MaterialTheme.typography.displayMedium
                         Text(
                             "${temp.value}°",
-                            style = MaterialTheme.typography.displaySmall,
+                            style = heroStyle,
                             fontWeight = FontWeight.Medium,
                             color = nameColor,
                         )
@@ -686,17 +743,30 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, su
             maxLines = 1,
         )
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            if (ctl.warm) {
+            // chunky pill-shaped track, easier to see and grab than the M3
+            // default; warm sliders show a static color-temperature gradient,
+            // plain sliders show a proper filled-vs-unfilled fraction
+            val fraction = ((shown - ctl.min) / (ctl.max - ctl.min).coerceAtLeast(0.0001f))
+                .coerceIn(0f, 1f)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        if (ctl.warm) Brush.horizontalGradient(
+                            listOf(Color(0xFFBCD9FF), Color(0xFFFFF3DA), Color(0xFFFFB84D))
+                        ) else Brush.horizontalGradient(listOf(subColor.copy(alpha = 0.22f), subColor.copy(alpha = 0.22f)))
+                    )
+            )
+            if (!ctl.warm) {
                 Box(
                     Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFFBCD9FF), Color(0xFFFFF3DA), Color(0xFFFFB84D))
-                            )
-                        )
+                        .fillMaxWidth(fraction)
+                        .height(12.dp)
+                        .align(Alignment.CenterStart)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(onColor)
                 )
             }
             Slider(
@@ -710,11 +780,11 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, su
                     drag = null
                 },
                 valueRange = ctl.min..ctl.max,
-                colors = if (ctl.warm) SliderDefaults.colors(
+                colors = SliderDefaults.colors(
                     activeTrackColor = Color.Transparent,
                     inactiveTrackColor = Color.Transparent,
-                ) else SliderDefaults.colors(),
-                modifier = Modifier.height(36.dp),
+                ),
+                modifier = Modifier.height(40.dp),
             )
         }
         Text(
@@ -730,13 +800,17 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, su
 
 @Composable
 private fun SegRow(ctl: SegCtl, vm: DashboardViewModel) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(36.dp)) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(40.dp)) {
         ctl.options.forEachIndexed { i, (v, label) ->
             SegmentedButton(
                 selected = ctl.value == v,
                 onClick = { vm.sendChars(ctl.targets, v) },
                 shape = SegmentedButtonDefaults.itemShape(index = i, count = ctl.options.size),
                 icon = {},
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = MaterialTheme.colorScheme.surfaceBright,
+                    activeContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
                 label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
             )
         }
@@ -902,26 +976,52 @@ private fun ChipsRow(chips: List<ChipUi>, vm: DashboardViewModel) {
     }
 }
 
+private fun airQualityPillColor(label: String): Color = when (label) {
+    "Excellent", "Good" -> Color(0xFF34A853)
+    "Fair" -> Color(0xFFF29900)
+    "Inferior", "Poor" -> Color(0xFFD93025)
+    else -> Color(0xFF9AA0A6)
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SensorsRow(sensors: List<SensorUi>, onColor: Color, subColor: Color) {
     FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         sensors.forEach { s ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Icon(sensorIcon(s.kind), null, Modifier.size(15.dp), tint = subColor)
-                Text(
-                    s.value,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = onColor,
-                )
-                if (s.unit.isNotEmpty()) {
-                    Text(s.unit, style = MaterialTheme.typography.labelSmall, color = subColor)
+            if (s.kind == SensorKind.AIR_QUALITY) {
+                val pillColor = airQualityPillColor(s.value)
+                Surface(shape = RoundedCornerShape(50), color = pillColor.copy(alpha = 0.18f)) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(sensorIcon(s.kind), null, Modifier.size(13.dp), tint = pillColor)
+                        Text(
+                            "${s.value} Air Quality",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = pillColor,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(sensorIcon(s.kind), null, Modifier.size(15.dp), tint = subColor)
+                    Text(
+                        s.value,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = onColor,
+                    )
+                    if (s.unit.isNotEmpty()) {
+                        Text(s.unit, style = MaterialTheme.typography.labelSmall, color = subColor)
+                    }
                 }
             }
         }

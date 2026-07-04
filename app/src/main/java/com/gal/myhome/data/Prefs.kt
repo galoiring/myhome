@@ -25,6 +25,12 @@ enum class Room(val label: String, val priority: Int) {
     OTHER("Other", 4),
 }
 
+enum class TileWidth(val units: Int, val label: String) {
+    SMALL(1, "S"), MEDIUM(2, "M"), LARGE(3, "L"),
+}
+enum class TileHeight { NORMAL, HALF }
+data class TileSizeCfg(val width: TileWidth = TileWidth.MEDIUM, val height: TileHeight = TileHeight.NORMAL)
+
 // sensible assignments for the devices this home has today; overridable in Settings
 private val DEFAULT_ROOMS = mapOf(
     "g:color-a01f7d|color-a575ef" to Room.LIVING,
@@ -62,8 +68,10 @@ data class Prefs(
     val cameras: List<CameraCfg> = emptyList(),
     // explicit user-chosen tile order; empty means "use the automatic sort"
     val tileOrder: List<String> = emptyList(),
+    val tileSizes: Map<String, TileSizeCfg> = emptyMap(),
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
+    fun sizeFor(key: String): TileSizeCfg = tileSizes[key] ?: TileSizeCfg()
 }
 
 private val Context.dataStore by preferencesDataStore(name = "prefs")
@@ -91,6 +99,7 @@ class PrefsRepo(private val context: Context) {
         val yeelights = stringPreferencesKey("yeelights")
         val cameras = stringPreferencesKey("cameras")
         val tileOrder = stringPreferencesKey("tile_order")
+        val tileSizes = stringPreferencesKey("tile_sizes")
     }
 
     private inline fun <reified E : Enum<E>> parse(v: String?, default: E): E =
@@ -127,6 +136,23 @@ class PrefsRepo(private val context: Context) {
         } catch (_: Exception) { emptyList() }
     }
 
+    private fun parseTileSizes(v: String?): Map<String, TileSizeCfg> {
+        if (v.isNullOrEmpty()) return emptyMap()
+        return try {
+            val o = JSONObject(v)
+            buildMap {
+                o.keys().forEach { k ->
+                    val e = o.getJSONObject(k)
+                    val width = TileWidth.entries.firstOrNull { it.name == e.optString("width") }
+                        ?: TileWidth.MEDIUM
+                    val height = TileHeight.entries.firstOrNull { it.name == e.optString("height") }
+                        ?: TileHeight.NORMAL
+                    put(k, TileSizeCfg(width, height))
+                }
+            }
+        } catch (_: Exception) { emptyMap() }
+    }
+
     private fun parseCameras(v: String?): List<CameraCfg> {
         if (v.isNullOrEmpty()) return emptyList()
         return try {
@@ -160,6 +186,7 @@ class PrefsRepo(private val context: Context) {
             yeelights = parseYeelights(p[K.yeelights]),
             cameras = parseCameras(p[K.cameras]),
             tileOrder = parseStringList(p[K.tileOrder]),
+            tileSizes = parseTileSizes(p[K.tileSizes]),
         )
     }
 
@@ -189,6 +216,9 @@ class PrefsRepo(private val context: Context) {
                 JSONObject().put("name", it.name).put("url", it.url)
             }).toString()
             p[K.tileOrder] = JSONArray(prefs.tileOrder).toString()
+            p[K.tileSizes] = JSONObject(prefs.tileSizes.mapValues {
+                JSONObject().put("width", it.value.width.name).put("height", it.value.height.name)
+            }).toString()
         }
     }
 }

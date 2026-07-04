@@ -34,6 +34,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,6 +72,8 @@ import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
 import com.gal.myhome.data.Density
 import com.gal.myhome.data.Room
+import com.gal.myhome.data.TileHeight
+import com.gal.myhome.data.TileWidth
 import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.ThemeMode
 import com.gal.myhome.data.YeelightCfg
@@ -426,6 +429,29 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                             onSelect = { vm.setRoom(tile.key, it) },
                         )
                     }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp, start = 32.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val size = prefs.sizeFor(tile.key)
+                        WidthDropdown(
+                            current = size.width,
+                            onSelect = { vm.setTileWidth(tile.key, it) },
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        FilterChip(
+                            selected = size.height == TileHeight.HALF,
+                            onClick = {
+                                vm.setTileHeight(
+                                    tile.key,
+                                    if (size.height == TileHeight.HALF) TileHeight.NORMAL else TileHeight.HALF,
+                                )
+                            },
+                            label = { Text("Half height", style = MaterialTheme.typography.labelMedium) },
+                        )
+                    }
                 }
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f),
@@ -467,6 +493,28 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
             vm = vm,
             onDismiss = { showGroupDialog = false },
         )
+    }
+}
+
+@Composable
+private fun WidthDropdown(current: TileWidth, onSelect: (TileWidth) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.height(34.dp)) {
+            Text("Width: ${current.label}", style = MaterialTheme.typography.labelMedium)
+            Icon(Icons.Rounded.ArrowDropDown, null, Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            TileWidth.entries.forEach { w ->
+                DropdownMenuItem(
+                    text = { Text(w.label) },
+                    onClick = { onSelect(w); expanded = false },
+                    leadingIcon = if (w == current) {
+                        { Icon(Icons.Rounded.Check, null, Modifier.size(18.dp)) }
+                    } else null,
+                )
+            }
+        }
     }
 }
 

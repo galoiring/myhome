@@ -24,6 +24,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -110,31 +113,57 @@ private fun App(vm: DashboardViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
         ) {
-            var showSettings by rememberSaveable { mutableStateOf(false) }
-            Box(Modifier.safeDrawingPadding()) {
-                if (showSettings) {
-                    BackHandler { showSettings = false }
-                    SettingsScreen(vm, onBack = { showSettings = false })
-                } else {
-                    DashboardScreen(vm, onOpenSettings = { showSettings = true })
+            // soft ambient color blobs behind the translucent tiles — the
+            // ViewModel's poll/clock ticks don't touch these theme colors,
+            // so this only redraws on an actual theme change, not every 3s
+            val primary = MaterialTheme.colorScheme.primary
+            val tertiary = MaterialTheme.colorScheme.tertiary
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        drawRect(
+                            Brush.radialGradient(
+                                colors = listOf(primary.copy(alpha = 0.16f), Color.Transparent),
+                                center = Offset(size.width * 0.10f, size.height * 0.05f),
+                                radius = size.minDimension * 0.85f,
+                            )
+                        )
+                        drawRect(
+                            Brush.radialGradient(
+                                colors = listOf(tertiary.copy(alpha = 0.14f), Color.Transparent),
+                                center = Offset(size.width * 0.95f, size.height * 0.9f),
+                                radius = size.minDimension * 0.95f,
+                            )
+                        )
+                    }
+            ) {
+                var showSettings by rememberSaveable { mutableStateOf(false) }
+                Box(Modifier.safeDrawingPadding()) {
+                    if (showSettings) {
+                        BackHandler { showSettings = false }
+                        SettingsScreen(vm, onBack = { showSettings = false })
+                    } else {
+                        DashboardScreen(vm, onOpenSettings = { showSettings = true })
+                    }
                 }
-            }
-            if (showNight) {
-                val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
-                        .pointerInput(Unit) {
-                            detectTapGestures { wokenAt = System.currentTimeMillis() }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        timeFmt.format(now),
-                        color = Color.White.copy(alpha = .22f),
-                        style = MaterialTheme.typography.displayMedium,
-                    )
+                if (showNight) {
+                    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                            .pointerInput(Unit) {
+                                detectTapGestures { wokenAt = System.currentTimeMillis() }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            timeFmt.format(now),
+                            color = Color.White.copy(alpha = .22f),
+                            style = MaterialTheme.typography.displayMedium,
+                        )
+                    }
                 }
             }
         }
