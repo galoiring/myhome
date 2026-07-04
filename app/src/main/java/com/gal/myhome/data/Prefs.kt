@@ -81,6 +81,9 @@ data class Prefs(
     val nightMode: Boolean = true,
     val nightStartHour: Int = 23,
     val nightEndHour: Int = 7,
+    // during night hours the theme goes dark even if set to Light/System —
+    // separately toggleable so the Theme control isn't mysteriously "broken"
+    val nightDarkTheme: Boolean = true,
     val rooms: Map<String, Room> = emptyMap(),
     val yeelights: List<YeelightCfg> = emptyList(),
     val cameras: List<CameraCfg> = emptyList(),
@@ -116,6 +119,7 @@ class PrefsRepo(private val context: Context) {
         val nightMode = booleanPreferencesKey("night_mode")
         val nightStartHour = intPreferencesKey("night_start_hour")
         val nightEndHour = intPreferencesKey("night_end_hour")
+        val nightDarkTheme = booleanPreferencesKey("night_dark_theme")
         val rooms = stringPreferencesKey("rooms")
         val yeelights = stringPreferencesKey("yeelights")
         val cameras = stringPreferencesKey("cameras")
@@ -204,6 +208,7 @@ class PrefsRepo(private val context: Context) {
             nightMode = p[K.nightMode] ?: true,
             nightStartHour = p[K.nightStartHour] ?: 23,
             nightEndHour = p[K.nightEndHour] ?: 7,
+            nightDarkTheme = p[K.nightDarkTheme] ?: true,
             rooms = parseRooms(p[K.rooms]),
             yeelights = parseYeelights(p[K.yeelights]),
             cameras = parseCameras(p[K.cameras]),
@@ -231,6 +236,7 @@ class PrefsRepo(private val context: Context) {
             p[K.nightMode] = prefs.nightMode
             p[K.nightStartHour] = prefs.nightStartHour
             p[K.nightEndHour] = prefs.nightEndHour
+            p[K.nightDarkTheme] = prefs.nightDarkTheme
             p[K.rooms] = JSONObject(prefs.rooms.mapValues { it.value.name }).toString()
             p[K.yeelights] = JSONArray(prefs.yeelights.map {
                 JSONObject().put("ip", it.ip).put("name", it.name)

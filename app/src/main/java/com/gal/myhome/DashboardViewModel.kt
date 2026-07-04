@@ -772,6 +772,11 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             chips.clear()
             sensors.retainAll { it.kind == SensorKind.PM25 }
         }
+        if (kind == TileKind.AC) {
+            // the header's "inside" pill already shows this same reading —
+            // a second copy on the tile is noise
+            sensors.removeAll { it.kind == SensorKind.TEMP }
+        }
 
         val hasToggle = toggleTargets.isNotEmpty()
         val parts = subParts.take(3).joinToString(" · ")

@@ -256,6 +256,13 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                         vm.updatePrefs(prefs.copy(nightEndHour = it))
                     }
                 }
+                item {
+                    SwitchRow(
+                        "Dark theme at night",
+                        "During night hours, override the Theme choice with dark",
+                        prefs.nightDarkTheme,
+                    ) { vm.updatePrefs(prefs.copy(nightDarkTheme = it)) }
+                }
             }
 
             /* ---- yeelight LAN ---- */

@@ -111,7 +111,7 @@ private fun App(vm: DashboardViewModel = viewModel()) {
         }
     }
 
-    MyHomeTheme(prefs, forceDark = inNight) {
+    MyHomeTheme(prefs, forceDark = inNight && prefs.nightDarkTheme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
