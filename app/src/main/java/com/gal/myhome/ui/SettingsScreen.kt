@@ -784,7 +784,7 @@ private fun AddYeelightDialog(
 @Composable
 private fun AddCameraDialog(onDismiss: () -> Unit, onAdd: (CameraCfg) -> Unit) {
     var name by remember { mutableStateOf("Doorbell") }
-    var url by remember { mutableStateOf("rtsp://192.168.68.75:") }
+    var url by remember { mutableStateOf("rtsp://") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add camera") },

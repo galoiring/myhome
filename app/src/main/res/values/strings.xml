@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">My Home</string>
-    <string name="dashboard_url" translatable="false">http://192.168.68.75:8090/</string>
-    <string name="error_title">Can\'t reach the dashboard</string>
-    <string name="error_subtitle">Check that you\'re on the home network and the dashboard is running.</string>
-    <string name="retry">Retry</string>
 </resources>

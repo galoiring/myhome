@@ -62,7 +62,8 @@ data class YeelightCfg(val ip: String, val name: String)
 data class CameraCfg(val name: String, val url: String)
 
 data class Prefs(
-    val serverUrl: String = "http://192.168.68.75:8090",
+    // placeholder — every install needs to set its own backend host in Settings
+    val serverUrl: String = "http://192.168.1.100:8090",
     val pollSeconds: Int = 3,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
@@ -84,7 +85,9 @@ data class Prefs(
     // explicit user-chosen tile order; empty means "use the automatic sort"
     val tileOrder: List<String> = emptyList(),
     val tileSizes: Map<String, TileSizeCfg> = emptyMap(),
-    val updateCheckUrl: String = "http://192.168.68.51:8000/update.json",
+    // GitHub-hosted manifest so the in-app updater works for any install, not
+    // just ones on the original developer's LAN
+    val updateCheckUrl: String = "https://raw.githubusercontent.com/galoiring/myhome/main/update.json",
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
     fun sizeFor(key: String): TileSizeCfg = tileSizes[key] ?: DEFAULT_SIZES[key] ?: TileSizeCfg()

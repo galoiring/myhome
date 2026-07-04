@@ -7,3 +7,8 @@ keystore.properties
 .DS_Store
 *.iml
 .idea/
+
+# server runtime state (your actual device names/groups/hidden list/Shelly
+# IPs) — personal, not source code
+server/settings.json
+server/settings.json.tmp

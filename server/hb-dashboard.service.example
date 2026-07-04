@@ -1,0 +1,21 @@
+[Unit]
+Description=hb-dashboard (My Home backend)
+After=network.target homebridge.service
+Wants=homebridge.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/YOUR_USER/hb-dashboard
+Environment=PORT=8090
+Environment=HAP_HOST=127.0.0.1
+Environment=HAP_PORT=51705
+Environment=HAP_PIN=CHANGE_ME
+Environment=WEATHER_LAT=0.00
+Environment=WEATHER_LON=0.00
+ExecStart=/usr/bin/node /home/YOUR_USER/hb-dashboard/server.js
+Restart=on-failure
+RestartSec=3
+User=YOUR_USER
+
+[Install]
+WantedBy=multi-user.target

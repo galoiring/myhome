@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Local preview for the redesigned dashboard.
+"""Local preview for the web dashboard frontend.
 
-Serves dashboard/index.html and proxies /api/* (and icons) to the live
-dashboard server on the Pi, so the redesign renders with real device data.
+Serves server/public/index.html and proxies /api/* (and icons) to a live
+hb-dashboard backend (see server.js), so edits render against real device
+data without redeploying to the backend host on every change.
 """
 import http.server
 import os
 import socketserver
 import urllib.request
 
-UPSTREAM = 'http://192.168.68.75:8090'
+UPSTREAM = os.environ.get('UPSTREAM', 'http://192.168.68.75:8090')
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get('PORT', 8091))
 
@@ -25,7 +26,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.proxy('GET')
             return
         try:
-            with open(os.path.join(HERE, 'index.html'), 'rb') as f:
+            with open(os.path.join(HERE, 'public', 'index.html'), 'rb') as f:
                 body = f.read()
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')

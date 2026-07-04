@@ -13,8 +13,10 @@ import java.util.concurrent.TimeUnit
 
 class HomeApi {
 
+    // overwritten from Prefs before any real request; this initial value is
+    // never actually hit
     @Volatile
-    var baseUrl: String = "http://192.168.68.75:8090"
+    var baseUrl: String = "http://192.168.1.100:8090"
 
     private val json = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()
