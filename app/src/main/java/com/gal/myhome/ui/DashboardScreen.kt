@@ -2,6 +2,7 @@ package com.gal.myhome.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -80,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -150,15 +153,24 @@ private val PurpleTint = TintSet(
     iconCircle = Color(0xFFB79CFF), iconTint = Color(0xFF2E1F52),
 )
 
+private val TealTint = TintSet(
+    tileLight = Color(0xFFDDF1EA), tileDark = Color(0xFF17332C),
+    contentLight = Color(0xFF0E3B31), contentDark = Color(0xFFBFE5D9),
+    iconCircle = Color(0xFF7ED4BC), iconTint = Color(0xFF0B3A2E),
+)
+
 private fun tintFor(kind: TileKind): TintSet = when (kind) {
     TileKind.AC, TileKind.PURIFIER, TileKind.FAN -> CoolTint
     TileKind.CURTAIN -> PurpleTint
+    TileKind.SENSOR -> TealTint
     else -> AmberTint
 }
 
-// a curtain has no on/off state (it's position-based), so unlike lights/climate
-// its tint isn't conditional on tile.isOn — it always reads as its own kind
-private fun alwaysTinted(kind: TileKind): Boolean = kind == TileKind.CURTAIN
+// curtains and sensors have no on/off state (position- and reading-based),
+// so unlike lights/climate their tint isn't conditional on tile.isOn —
+// they always read as their own kind instead of looking like "off" tiles
+private fun alwaysTinted(kind: TileKind): Boolean =
+    kind == TileKind.CURTAIN || kind == TileKind.SENSOR
 
 fun tileIcon(kind: TileKind): ImageVector = when (kind) {
     TileKind.LIGHT -> Icons.Rounded.Lightbulb
@@ -575,6 +587,17 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
             .copy(alpha = glassAlpha),
         label = "tileBg",
     )
+    // hairline edge so the glass cards read as distinct panes instead of flat
+    // fills: bright glass highlight on light, faint on dark, and a matching
+    // warm/cool edge on tinted tiles — animated so on/off stays smooth
+    val borderColor by animateColorAsState(
+        when {
+            tinted -> onContent.copy(alpha = .15f)
+            dark -> Color.White.copy(alpha = .08f)
+            else -> Color.White.copy(alpha = .55f)
+        },
+        label = "tileBorder",
+    )
     val nameColor = if (tinted) onContent else MaterialTheme.colorScheme.onSurface
     val subColor = if (tinted) onContent.copy(alpha = .75f)
     else MaterialTheme.colorScheme.onSurfaceVariant
@@ -600,6 +623,7 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
         interactionSource = interaction,
         shape = RoundedCornerShape(28.dp),
         color = bg,
+        border = BorderStroke(1.dp, borderColor),
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { scaleX = scale; scaleY = scale },
@@ -652,7 +676,23 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                 }
             } else if (tile.kind == TileKind.SENSOR && tile.controls.isEmpty()) {
                 // room sensor: show the reading large, like a thermometer card
-                TileHead(tile, nameColor, subColor, big = false)
+                val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
+                val pm25 = tile.sensors.firstOrNull { it.kind == SensorKind.PM25 }
+                val humidity = tile.sensors.firstOrNull { it.kind == SensorKind.HUMIDITY }
+                val pmStatus = pm25?.value?.toDoubleOrNull()?.let { pm25Status(it) }
+                val tempVal = temp?.value?.toDoubleOrNull()
+                // status-colored icon circle: AQ tiles follow the PM2.5 band,
+                // temp tiles get a cool/warm accent at the extremes
+                val (accentCircle, accentIcon) = when {
+                    pmStatus != null -> pmStatus.second to Color.White
+                    tempVal != null && tempVal <= 18 -> CoolTint.iconCircle to CoolTint.iconTint
+                    tempVal != null && tempVal >= 26 -> AmberTint.iconCircle to AmberTint.iconTint
+                    else -> null to null
+                }
+                TileHead(
+                    tile, nameColor, subColor, big = false,
+                    accentCircle = accentCircle, accentIcon = accentIcon,
+                )
                 Column(
                     Modifier
                         .weight(1f)
@@ -660,20 +700,81 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
+                    // a Small-width tile doesn't have room for the bigger scale
+                    val heroStyle = if (tile.width == TileWidth.SMALL)
+                        MaterialTheme.typography.displaySmall
+                    else MaterialTheme.typography.displayMedium
                     if (temp != null) {
-                        // a Small-width tile doesn't have room for the bigger scale
-                        val heroStyle = if (tile.width == TileWidth.SMALL)
-                            MaterialTheme.typography.displaySmall
-                        else MaterialTheme.typography.displayMedium
                         Text(
                             "${temp.value}°",
                             style = heroStyle,
                             fontWeight = FontWeight.Medium,
                             color = nameColor,
                         )
+                    } else if (pm25 != null) {
+                        Row {
+                            Text(
+                                pm25.value,
+                                style = heroStyle,
+                                fontWeight = FontWeight.Medium,
+                                color = nameColor,
+                                modifier = Modifier.alignByBaseline(),
+                            )
+                            Text(
+                                pm25.unit,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = subColor,
+                                modifier = Modifier.alignByBaseline().padding(start = 5.dp),
+                            )
+                        }
+                        pmStatus?.let { (label, color) ->
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = color.copy(alpha = 0.18f),
+                                modifier = Modifier.padding(top = 6.dp),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = color,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+                        }
                     }
-                    val rest = tile.sensors.filterNot { it === temp }
+                    // humidity rides under the temp hero as a compact pill
+                    val humidityPill = humidity.takeIf { temp != null }
+                    if (humidityPill != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = subColor.copy(alpha = 0.14f),
+                            modifier = Modifier.padding(top = 6.dp),
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(Icons.Rounded.WaterDrop, null, Modifier.size(14.dp), tint = subColor)
+                                Text(
+                                    "${humidityPill.value}${humidityPill.unit}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = nameColor,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
+                    }
+                    val rest = tile.sensors.filterNot {
+                        it === temp || it === pm25 || it === humidityPill
+                    }
                     if (rest.isNotEmpty()) {
                         Row(
                             Modifier.padding(top = 6.dp),
@@ -747,6 +848,8 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
 private fun TileHead(
     tile: TileUi, nameColor: Color, subColor: Color, big: Boolean,
     modeControl: SegCtl? = null, onSelectMode: (Int) -> Unit = {},
+    // sensor tiles color the icon circle by reading (AQ status, hot/cold)
+    accentCircle: Color? = null, accentIcon: Color? = null,
 ) {
     val tint = tintFor(tile.kind)
     val tinted = tile.isOn || alwaysTinted(tile.kind)
@@ -756,7 +859,7 @@ private fun TileHead(
     ) {
         Surface(
             shape = CircleShape,
-            color = if (tinted) tint.iconCircle
+            color = accentCircle ?: if (tinted) tint.iconCircle
             else MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.size(if (big) 50.dp else 40.dp),
         ) {
@@ -764,7 +867,7 @@ private fun TileHead(
                 Icon(
                     tileIcon(tile.kind), null,
                     Modifier.size(if (big) 26.dp else 21.dp),
-                    tint = if (tinted) tint.iconTint else nameColor,
+                    tint = accentIcon ?: if (tinted) tint.iconTint else nameColor,
                 )
             }
         }
@@ -833,7 +936,7 @@ private fun ControlView(
 ) {
     when (ctl) {
         is SliderCtl -> SliderRow(ctl, vm, onColor, subColor)
-        is SegCtl -> SegRow(ctl, vm)
+        is SegCtl -> SegRow(ctl, vm, onColor, subColor)
         is StepCtl -> StepperRow(ctl, vm, onColor, subColor, big = soloStepper)
         is CurtainCtl -> CurtainRow(ctl, vm, onColor, subColor)
     }
@@ -908,17 +1011,24 @@ private fun SliderRow(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, su
 }
 
 @Composable
-private fun SegRow(ctl: SegCtl, vm: DashboardViewModel) {
+private fun SegRow(ctl: SegCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(40.dp)) {
         ctl.options.forEachIndexed { i, (v, label) ->
+            val selected = ctl.value == v
             SegmentedButton(
-                selected = ctl.value == v,
+                selected = selected,
                 onClick = { vm.sendChars(ctl.targets, v) },
                 shape = SegmentedButtonDefaults.itemShape(index = i, count = ctl.options.size),
-                icon = {},
+                icon = { SegmentedButtonDefaults.Icon(selected) },
+                border = BorderStroke(1.dp, subColor.copy(alpha = .35f)),
                 colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.surfaceBright,
-                    activeContentColor = MaterialTheme.colorScheme.onSurface,
+                    // fill with the tile's content color so the selection is
+                    // unmistakable on plain and tinted tiles, light or dark —
+                    // surfaceBright vanished against a light tile
+                    activeContainerColor = onColor,
+                    activeContentColor = if (onColor.luminance() > 0.5f) Color(0xFF1C1B1F) else Color.White,
+                    inactiveContainerColor = Color.Transparent,
+                    inactiveContentColor = onColor,
                 ),
                 label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
             )
@@ -999,8 +1109,14 @@ private fun bump(ctl: StepCtl, vm: DashboardViewModel, dir: Int) {
    plain gradient bar. */
 @Composable
 private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    val haptics = LocalHapticFeedback.current
     var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
-    val open = (drag ?: ctl.value).coerceIn(0f, 100f)
+    // poll updates and taps glide to the new position; while a finger is
+    // down the raw drag value keeps the fabric 1:1 under it
+    val settled by animateFloatAsState(ctl.value.coerceIn(0f, 100f), label = "curtainPos")
+    val open = (drag ?: settled).coerceIn(0f, 100f)
+    val dragging = drag != null
 
     // fills whatever height the tile gives it (Half-height tiles included)
     // instead of a fixed size that would force scrolling in a compact tile
@@ -1009,6 +1125,7 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
             Text(
                 if (open <= 1f) "Closed" else "${open.roundToInt()}% open",
                 style = MaterialTheme.typography.titleSmall,
+                fontWeight = if (dragging) FontWeight.Bold else null,
                 color = onColor,
             )
             Spacer(Modifier.weight(1f))
@@ -1038,6 +1155,9 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                         },
                         onDragEnd = {
                             drag?.let { vm.sendChars(ctl.targets, it.roundToInt()) }
+                            if (prefs.hapticFeedback) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
                             drag = null
                         },
                         onDragCancel = { drag = null },
@@ -1064,11 +1184,14 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                 drawRect(Color(0xFFEDEBF7), topLeft = Offset(0f, 0f), size = Size(w, 8f))
             }
 
-            // curtain fabric — pinned left, recedes rightward as it opens
+            val fraction = (1f - open / 100f).coerceIn(0.03f, 1f)
+            // curtain fabric — pinned left, recedes rightward as it opens;
+            // leading edge rounded so the fabric sits visually above the window
             Box(
                 Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(fraction = (1f - open / 100f).coerceIn(0.03f, 1f))
+                    .fillMaxWidth(fraction)
+                    .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp))
                     .background(Brush.horizontalGradient(fabricColors))
                     .drawBehind {
                         var x = 10.dp.toPx()
@@ -1088,18 +1211,81 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                             )
                             x += step
                         }
-                    },
-                contentAlignment = Alignment.CenterEnd,
+                    }
+            )
+            // grip + edge shadow live outside the clipped fabric so the pill
+            // can overhang the leading edge and stay visible fully closed
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction),
             ) {
-                // grip on the leading edge
+                // soft shadow the fabric casts onto the window
                 Box(
                     Modifier
-                        .padding(end = 3.dp)
-                        .width(4.dp)
-                        .fillMaxHeight(0.6f)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(gripColor)
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 12.dp)
+                        .width(12.dp)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color.Black.copy(alpha = 0.10f), Color.Transparent)
+                            )
+                        )
                 )
+                // pill grip on the leading edge
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 5.dp)
+                        .fillMaxHeight(0.5f)
+                        .width(11.dp)
+                        .shadow(3.dp, RoundedCornerShape(6.dp))
+                        .background(gripColor)
+                ) {
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 2.dp)
+                            .width(2.dp)
+                            .fillMaxHeight(0.72f)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color.White.copy(alpha = 0.45f))
+                    )
+                    Column(
+                        Modifier.align(Alignment.Center),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        repeat(3) {
+                            Box(
+                                Modifier
+                                    .size(2.5.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.8f))
+                            )
+                        }
+                    }
+                }
+                if (dragging) {
+                    // floating readout that tracks the grip while the finger
+                    // may be covering the header text
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = gripColor,
+                        shadowElevation = 2.dp,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 12.dp, y = 5.dp),
+                    ) {
+                        Text(
+                            "${open.roundToInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -1140,6 +1326,13 @@ private fun airQualityPillColor(label: String): Color = when (label) {
     "Fair" -> Color(0xFFF29900)
     "Inferior", "Poor" -> Color(0xFFD93025)
     else -> Color(0xFF9AA0A6)
+}
+
+// WHO-ish PM2.5 bands, same palette as airQualityPillColor
+private fun pm25Status(v: Double): Pair<String, Color> = when {
+    v <= 12 -> "Good" to Color(0xFF34A853)
+    v <= 35 -> "Moderate" to Color(0xFFF29900)
+    else -> "Poor" to Color(0xFFD93025)
 }
 
 @OptIn(ExperimentalLayoutApi::class)

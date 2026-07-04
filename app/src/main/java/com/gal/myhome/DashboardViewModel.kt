@@ -513,7 +513,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 split.add(t.copy(sensors = emptyList()))
                 split.add(TileUi(
                     key = "${t.key}:aq",
-                    name = "${t.name} Air Quality",
+                    // the row-level room label already gives context, so the
+                    // parent device name would just make this wrap
+                    name = serverSettings.names["${t.key}:aq"] ?: "Air Quality",
                     sub = "",
                     kind = TileKind.SENSOR,
                     isOn = false,
@@ -649,16 +651,24 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             svc.ch(T.SPEED)?.let { c ->
                 if (svc.type == SVC.HC) {
                     // this AC's hardware only has 3 real fan speeds; a 0-100
-                    // slider misrepresents it as continuous
+                    // slider misrepresents it as continuous. Until the first
+                    // poll lands the value is unknown — no segment selected
                     val steps = listOf(33 to "Low", 66 to "Medium", 100 to "High")
                     val cur = chrValue(acc.aid, c).asDouble()?.roundToInt()
-                    val nearest = steps.minByOrNull { abs(it.first - (cur ?: 0)) }?.first
+                    val nearest = cur?.let { cv -> steps.minByOrNull { abs(it.first - cv) }?.first }
                     controls.add(SegCtl(cid(c), steps, nearest, tg(T.SPEED)))
                 } else {
-                    controls.add(SliderCtl(cid(c), "Speed", "%",
-                        (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
-                        (c.minStep ?: 1.0).toFloat(),
-                        (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.SPEED)))
+                    // in Auto the purifier drives its own fan (and reports
+                    // rotation speed 0) — the slider only means anything in
+                    // Manual, so it's hidden until the mode says so
+                    val apAuto = svc.type == SVC.AP &&
+                        svc.ch(T.TGT_AP)?.let { chrValue(acc.aid, it).asDouble()?.toInt() } == 1
+                    if (!apAuto) {
+                        controls.add(SliderCtl(cid(c), "Speed", "%",
+                            (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
+                            (c.minStep ?: 1.0).toFloat(),
+                            (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.SPEED)))
+                    }
                 }
             }
             svc.ch(T.CT)?.let { c ->
