@@ -80,7 +80,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -142,9 +144,21 @@ private val CoolTint = TintSet(
     iconCircle = Color(0xFF7FB5FF), iconTint = Color(0xFF0A2A47),
 )
 
-private fun tintFor(kind: TileKind): TintSet =
-    if (kind == TileKind.AC || kind == TileKind.PURIFIER || kind == TileKind.FAN) CoolTint
-    else AmberTint
+private val PurpleTint = TintSet(
+    tileLight = Color(0xFFEADDFF), tileDark = Color(0xFF3A2E55),
+    contentLight = Color(0xFF3A2570), contentDark = Color(0xFFE3D9FF),
+    iconCircle = Color(0xFFB79CFF), iconTint = Color(0xFF2E1F52),
+)
+
+private fun tintFor(kind: TileKind): TintSet = when (kind) {
+    TileKind.AC, TileKind.PURIFIER, TileKind.FAN -> CoolTint
+    TileKind.CURTAIN -> PurpleTint
+    else -> AmberTint
+}
+
+// a curtain has no on/off state (it's position-based), so unlike lights/climate
+// its tint isn't conditional on tile.isOn — it always reads as its own kind
+private fun alwaysTinted(kind: TileKind): Boolean = kind == TileKind.CURTAIN
 
 fun tileIcon(kind: TileKind): ImageVector = when (kind) {
     TileKind.LIGHT -> Icons.Rounded.Lightbulb
@@ -259,7 +273,13 @@ private fun HeaderRow(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column {
-            Text("My Home", style = MaterialTheme.typography.titleLarge)
+            if (showClock) {
+                Text(
+                    timeFmt.format(now),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             Text(
                 dateFmt.format(now),
                 style = MaterialTheme.typography.bodySmall,
@@ -275,14 +295,6 @@ private fun HeaderRow(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(end = 10.dp),
-            )
-        }
-        if (showClock) {
-            Text(
-                timeFmt.format(now),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 4.dp),
             )
         }
         Box {
@@ -540,18 +552,19 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     val tint = tintFor(tile.kind)
+    val tinted = tile.isOn || alwaysTinted(tile.kind)
     val onTile = if (dark) tint.tileDark else tint.tileLight
     val onContent = if (dark) tint.contentDark else tint.contentLight
     // glass translucency — subtle enough that legibility from across the room
     // isn't hurt, just enough to let the ambient background blobs show through
     val glassAlpha = 0.90f
     val bg by animateColorAsState(
-        (if (tile.isOn) onTile else MaterialTheme.colorScheme.surfaceContainerLow)
+        (if (tinted) onTile else MaterialTheme.colorScheme.surfaceContainerLow)
             .copy(alpha = glassAlpha),
         label = "tileBg",
     )
-    val nameColor = if (tile.isOn) onContent else MaterialTheme.colorScheme.onSurface
-    val subColor = if (tile.isOn) onContent.copy(alpha = .75f)
+    val nameColor = if (tinted) onContent else MaterialTheme.colorScheme.onSurface
+    val subColor = if (tinted) onContent.copy(alpha = .75f)
     else MaterialTheme.colorScheme.onSurfaceVariant
 
     val tappable = tile.canToggle || tile.camera != null
@@ -581,7 +594,7 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
     ) {
         // soft glow wash for an active tile, clipped to the card's own rounded
         // shape by Surface — no RenderEffect/blur() needed, works on minSdk 26
-        if (tile.isOn) {
+        if (tinted) {
             Box(Modifier.fillMaxSize().background(glowBrush))
         }
 
@@ -700,13 +713,14 @@ private fun TileHead(
     modeControl: SegCtl? = null, onSelectMode: (Int) -> Unit = {},
 ) {
     val tint = tintFor(tile.kind)
+    val tinted = tile.isOn || alwaysTinted(tile.kind)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (big) 12.dp else 10.dp),
     ) {
         Surface(
             shape = CircleShape,
-            color = if (tile.isOn) tint.iconCircle
+            color = if (tinted) tint.iconCircle
             else MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.size(if (big) 50.dp else 40.dp),
         ) {
@@ -714,7 +728,7 @@ private fun TileHead(
                 Icon(
                     tileIcon(tile.kind), null,
                     Modifier.size(if (big) 26.dp else 21.dp),
-                    tint = if (tile.isOn) tint.iconTint else nameColor,
+                    tint = if (tinted) tint.iconTint else nameColor,
                 )
             }
         }
@@ -941,9 +955,12 @@ private fun bump(ctl: StepCtl, vm: DashboardViewModel, dir: Int) {
     vm.sendChars(ctl.targets, if (v == v.toLong().toDouble()) v.toLong() else v)
 }
 
-/* draggable curtain: the fabric is anchored left and the leading edge moves
-   right→left as it opens, mirroring the physical curtain. Tap or drag the
-   window to set the position. */
+/* draggable curtain over a small window scene: the fabric is anchored left
+   and its leading edge recedes right→left as it opens (0% = fully covered,
+   100% = fully gathered left, window visible), mirroring the physical
+   curtain. Tap or drag the window to set the position — the interaction is
+   unchanged from before, just layered over a decorative Canvas instead of a
+   plain gradient bar. */
 @Composable
 private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
     var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
@@ -959,22 +976,19 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
             Spacer(Modifier.weight(1f))
             Text("drag to move", style = MaterialTheme.typography.labelSmall, color = subColor)
         }
-        val fabricColor = MaterialTheme.colorScheme.secondaryContainer
-        val pleatColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = .18f)
-        val gripColor = MaterialTheme.colorScheme.primary
+        val fabricColors = listOf(
+            Color(0xFFB79CFF).copy(alpha = 0.55f),
+            Color(0xFF8B5CF6).copy(alpha = 0.72f),
+            Color(0xFFD8C7FF).copy(alpha = 0.55f),
+        )
+        val pleatDark = Color(0xFF4B2E9E).copy(alpha = 0.25f)
+        val pleatLight = Color.White.copy(alpha = 0.30f)
+        val gripColor = Color(0xFF6D4DFF)
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.surfaceContainerHighest,
-                            MaterialTheme.colorScheme.surfaceContainerHigh,
-                        )
-                    )
-                )
+                .height(96.dp)
+                .clip(RoundedCornerShape(18.dp))
                 .pointerInput(ctl.id) {
                     detectHorizontalDragGestures(
                         onDragStart = { off ->
@@ -998,21 +1012,41 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                     }
                 }
         ) {
+            // window scene: sky, soft outdoor shapes, frame, top rail
+            Canvas(Modifier.matchParentSize()) {
+                val w = size.width
+                val h = size.height
+                drawRect(Brush.verticalGradient(listOf(Color(0xFFCFE7FF), Color(0xFFF2F8FF))))
+                drawCircle(Color(0xFFE3F0D2), radius = w * 0.22f, center = Offset(w * 0.18f, h * 1.02f))
+                drawCircle(Color(0xFFD8ECC8), radius = w * 0.20f, center = Offset(w * 0.55f, h * 1.05f))
+                drawCircle(Color(0xFFE3F0D2), radius = w * 0.18f, center = Offset(w * 0.85f, h * 1.0f))
+                val frame = Color.White.copy(alpha = 0.75f)
+                drawRect(frame, topLeft = Offset(w * 0.49f, 0f), size = Size(3f, h))
+                drawRect(frame, topLeft = Offset(0f, h * 0.5f), size = Size(w, 3f))
+                drawRect(Color(0xFFEDEBF7), topLeft = Offset(0f, 0f), size = Size(w, 8f))
+            }
+
+            // curtain fabric — pinned left, recedes rightward as it opens
             Box(
                 Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(fraction = (1f - open / 100f).coerceIn(0.04f, 1f))
-                    .background(fabricColor)
+                    .fillMaxWidth(fraction = (1f - open / 100f).coerceIn(0.03f, 1f))
+                    .background(Brush.horizontalGradient(fabricColors))
                     .drawBehind {
-                        // pleats
-                        var x = 12.dp.toPx()
-                        val step = 13.dp.toPx()
+                        var x = 10.dp.toPx()
+                        val step = 15.dp.toPx()
                         while (x < size.width - 4.dp.toPx()) {
                             drawLine(
-                                pleatColor,
-                                Offset(x, 5.dp.toPx()),
-                                Offset(x, size.height - 5.dp.toPx()),
+                                pleatDark,
+                                Offset(x, 6.dp.toPx()),
+                                Offset(x, size.height - 6.dp.toPx()),
                                 strokeWidth = 2.5f,
+                            )
+                            drawLine(
+                                pleatLight,
+                                Offset(x + step / 2f, 6.dp.toPx()),
+                                Offset(x + step / 2f, size.height - 6.dp.toPx()),
+                                strokeWidth = 1.5f,
                             )
                             x += step
                         }
@@ -1024,7 +1058,7 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                     Modifier
                         .padding(end = 3.dp)
                         .width(4.dp)
-                        .fillMaxHeight(0.55f)
+                        .fillMaxHeight(0.6f)
                         .clip(RoundedCornerShape(2.dp))
                         .background(gripColor)
                 )

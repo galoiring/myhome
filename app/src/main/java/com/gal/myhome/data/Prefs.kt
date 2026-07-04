@@ -37,10 +37,25 @@ private val DEFAULT_ROOMS = mapOf(
     "s:192.168.68.77:1" to Room.LIVING,
     "s:192.168.68.77:2" to Room.LIVING,
     "a:Curtain" to Room.LIVING,
+    "a:Mi Air Purifier" to Room.LIVING,
     "a:מזגן AC" to Room.WHOLE_HOME,
     "a:Ceeling light" to Room.BEDROOM,
     "a:ceilb-4dc114" to Room.BABY,
     "a:Temperature and Humidity sensor" to Room.BABY,
+)
+
+// same idea as DEFAULT_ROOMS: sensible starting sizes, overridable per tile in
+// Settings. Kitchen/Dining pair into one stacked column (same width, Half
+// height); Curtain pairs with the purifier's controls the same way, so both
+// actually render short instead of silently reverting to Normal height (a
+// lone unpaired Half-height tile has no matching neighbor to share a column
+// with, so it would otherwise just render at full height).
+private val DEFAULT_SIZES = mapOf(
+    "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
+    "s:192.168.68.77:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    "s:192.168.68.77:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
 )
 
 data class YeelightCfg(val ip: String, val name: String)
@@ -72,7 +87,7 @@ data class Prefs(
     val updateCheckUrl: String = "http://192.168.68.51:8000/update.json",
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
-    fun sizeFor(key: String): TileSizeCfg = tileSizes[key] ?: TileSizeCfg()
+    fun sizeFor(key: String): TileSizeCfg = tileSizes[key] ?: DEFAULT_SIZES[key] ?: TileSizeCfg()
 }
 
 private val Context.dataStore by preferencesDataStore(name = "prefs")
