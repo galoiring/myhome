@@ -461,6 +461,33 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
             .fillMaxSize()
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
+        if (tile.kind == TileKind.CAMERA) {
+            Box(Modifier.fillMaxSize()) {
+                tile.camera?.let { cfg -> CameraSnapshotBox(cfg.url, Modifier.fillMaxSize()) }
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(tileIcon(tile.kind), null, Modifier.size(18.dp), tint = Color.White)
+                    Text(
+                        tile.name,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    tile.sub,
+                    color = Color.White.copy(alpha = .75f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                )
+            }
+            return@Surface
+        }
+
         val hasBody =
             tile.controls.isNotEmpty() || tile.chips.isNotEmpty() || tile.sensors.isNotEmpty()
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
