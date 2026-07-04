@@ -3,6 +3,7 @@ package com.gal.myhome.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,8 +35,10 @@ import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Curtains
 import androidx.compose.material.icons.rounded.Cyclone
 import androidx.compose.material.icons.rounded.Eco
@@ -52,6 +55,8 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -653,7 +658,12 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                     }
                 }
             } else {
-                TileHead(tile, nameColor, subColor, big = false)
+                TileHead(
+                    tile, nameColor, subColor, big = false,
+                    modeControl = tile.modeControl,
+                    onSelectMode = { v -> tile.modeControl?.let { vm.sendChars(it.targets, v) } },
+                )
+                val soloStepper = tile.controls.count { it is StepCtl } == 1
                 Column(
                     Modifier
                         .weight(1f)
@@ -662,7 +672,7 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    tile.controls.forEach { ControlView(it, vm, nameColor, subColor) }
+                    tile.controls.forEach { ControlView(it, vm, nameColor, subColor, soloStepper) }
                     if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
                     if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
                 }
@@ -672,7 +682,10 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
 }
 
 @Composable
-private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boolean) {
+private fun TileHead(
+    tile: TileUi, nameColor: Color, subColor: Color, big: Boolean,
+    modeControl: SegCtl? = null, onSelectMode: (Int) -> Unit = {},
+) {
     val tint = tintFor(tile.kind)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -701,14 +714,46 @@ private fun TileHead(tile: TileUi, nameColor: Color, subColor: Color, big: Boole
                 overflow = TextOverflow.Ellipsis,
             )
             if (tile.sub.isNotEmpty()) {
-                Text(
-                    tile.sub,
-                    style = if (big) MaterialTheme.typography.bodyMedium
-                    else MaterialTheme.typography.bodySmall,
-                    color = subColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (modeControl != null) {
+                    // mode changes rarely (seasonal heat/cool) — tucked behind
+                    // a tap on the subtitle instead of a permanent segmented row
+                    var expanded by remember { mutableStateOf(false) }
+                    Box {
+                        Row(
+                            Modifier.clickable { expanded = true },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                tile.sub,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = subColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Icon(Icons.Rounded.ArrowDropDown, null, Modifier.size(16.dp), tint = subColor)
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            modeControl.options.forEach { (v, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = { onSelectMode(v); expanded = false },
+                                    leadingIcon = if (v == modeControl.value) {
+                                        { Icon(Icons.Rounded.Check, null, Modifier.size(18.dp)) }
+                                    } else null,
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        tile.sub,
+                        style = if (big) MaterialTheme.typography.bodyMedium
+                        else MaterialTheme.typography.bodySmall,
+                        color = subColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         // room is now shown as a row-level label in RoomGroupedGrid, not per tile
@@ -721,11 +766,12 @@ private fun ControlView(
     vm: DashboardViewModel,
     onColor: Color,
     subColor: Color,
+    soloStepper: Boolean = false,
 ) {
     when (ctl) {
         is SliderCtl -> SliderRow(ctl, vm, onColor, subColor)
         is SegCtl -> SegRow(ctl, vm)
-        is StepCtl -> StepperRow(ctl, vm, onColor, subColor)
+        is StepCtl -> StepperRow(ctl, vm, onColor, subColor, big = soloStepper)
         is CurtainCtl -> CurtainRow(ctl, vm, onColor, subColor)
     }
 }
@@ -818,7 +864,35 @@ private fun SegRow(ctl: SegCtl, vm: DashboardViewModel) {
 }
 
 @Composable
-private fun StepperRow(ctl: StepCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+private fun StepperRow(
+    ctl: StepCtl, vm: DashboardViewModel, onColor: Color, subColor: Color,
+    big: Boolean = false,
+) {
+    if (big) {
+        // the only stepper on the card (the common case: fixed Cool or Heat
+        // mode) gets a big, unlabeled, centered control instead of a plain row
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilledTonalIconButton(
+                onClick = { bump(ctl, vm, -1) },
+                modifier = Modifier.size(48.dp),
+            ) { Icon(Icons.Rounded.Remove, "decrease", Modifier.size(22.dp)) }
+            Text(
+                "${trimNum(ctl.value)}°",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Medium,
+                color = onColor,
+            )
+            FilledTonalIconButton(
+                onClick = { bump(ctl, vm, +1) },
+                modifier = Modifier.size(48.dp),
+            ) { Icon(Icons.Rounded.Add, "increase", Modifier.size(22.dp)) }
+        }
+        return
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             ctl.label,

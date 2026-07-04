@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /* ---------- UI models ---------- */
@@ -103,6 +104,7 @@ data class TileUi(
     val room: Room? = null,
     val width: TileWidth = TileWidth.MEDIUM,
     val height: TileHeight = TileHeight.NORMAL,
+    val modeControl: SegCtl? = null,
 )
 
 data class UiState(
@@ -521,6 +523,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         val sensors = mutableListOf<SensorUi>()
         var toggleTargets = emptyList<Target>()
         var toggleIsActive = false
+        var modeCtl: SegCtl? = null
         var mainToggleSet = false
         var onAny = false
         val subParts = mutableListOf<String>()
@@ -565,10 +568,19 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.BRIGHT)))
             }
             svc.ch(T.SPEED)?.let { c ->
-                controls.add(SliderCtl(cid(c), "Speed", "%",
-                    (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
-                    (c.minStep ?: 1.0).toFloat(),
-                    (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.SPEED)))
+                if (svc.type == SVC.HC) {
+                    // this AC's hardware only has 3 real fan speeds; a 0-100
+                    // slider misrepresents it as continuous
+                    val steps = listOf(33 to "Low", 66 to "Medium", 100 to "High")
+                    val cur = chrValue(acc.aid, c).asDouble()?.roundToInt()
+                    val nearest = steps.minByOrNull { abs(it.first - (cur ?: 0)) }?.first
+                    controls.add(SegCtl(cid(c), steps, nearest, tg(T.SPEED)))
+                } else {
+                    controls.add(SliderCtl(cid(c), "Speed", "%",
+                        (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
+                        (c.minStep ?: 1.0).toFloat(),
+                        (chrValue(acc.aid, c).asDouble() ?: 0.0).toFloat(), false, tg(T.SPEED)))
+                }
             }
             svc.ch(T.CT)?.let { c ->
                 controls.add(SliderCtl(cid(c), "Warmth", "",
@@ -583,10 +595,11 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
             val hcMode = svc.ch(T.TGT_HC)?.let { chrValue(acc.aid, it).asDouble()?.toInt() }
             svc.ch(T.TGT_HC)?.let { c ->
+                // mode changes rarely (seasonal) — kept out of the everyday
+                // card body and surfaced instead as a tap on the header text
                 val labels = listOf(0 to "Auto", 1 to "Heat", 2 to "Cool")
                 val valid = c.validValues ?: labels.map { it.first }
-                controls.add(SegCtl(cid(c), labels.filter { it.first in valid },
-                    hcMode, tg(T.TGT_HC)))
+                modeCtl = SegCtl(cid(c), labels.filter { it.first in valid }, hcMode, tg(T.TGT_HC))
             }
             svc.ch(T.TGT_AP)?.let { c ->
                 val labels = listOf(0 to "Manual", 1 to "Auto")
@@ -696,6 +709,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             shelly = null,
             toggleTargets = toggleTargets,
             toggleIsActive = toggleIsActive,
+            modeControl = modeCtl,
         )
     }
 
