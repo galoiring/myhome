@@ -118,6 +118,8 @@ class HomeApi {
         )
     }
 
+    class Snapshot(val bytes: ByteArray, val ts: Long)
+
     /** One JPEG frame grabbed server-side from a camera's RTSP stream. */
     suspend fun snapshot(rtspUrl: String): ByteArray = withContext(Dispatchers.IO) {
         val enc = java.net.URLEncoder.encode(rtspUrl, "UTF-8")
@@ -125,6 +127,19 @@ class HomeApi {
             .execute().use { resp ->
                 if (!resp.isSuccessful) throw IOException("HTTP ${resp.code} for snapshot")
                 resp.body?.bytes() ?: throw IOException("empty snapshot")
+            }
+    }
+
+    /** The server's last cached frame, without waking the camera; null if the
+     * server hasn't grabbed one since it started. */
+    suspend fun snapshotCached(rtspUrl: String): Snapshot? = withContext(Dispatchers.IO) {
+        val enc = java.net.URLEncoder.encode(rtspUrl, "UTF-8")
+        client.newCall(Request.Builder().url(url("/api/snapshot?cached=only&url=$enc")).build())
+            .execute().use { resp ->
+                if (resp.code == 404) return@use null
+                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code} for cached snapshot")
+                val bytes = resp.body?.bytes() ?: return@use null
+                Snapshot(bytes, resp.header("X-Snapshot-Ts")?.toLongOrNull() ?: 0L)
             }
     }
 

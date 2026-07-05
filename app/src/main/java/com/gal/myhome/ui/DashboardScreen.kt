@@ -3,6 +3,7 @@ package com.gal.myhome.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,8 +94,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -128,6 +131,7 @@ import com.gal.myhome.data.TileWidth
 import com.gal.myhome.data.Weather
 import com.gal.myhome.data.wmoInfo
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -744,21 +748,7 @@ fun TileCard(
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
         if (tile.kind == TileKind.CAMERA && tile.camera?.doorbell == true) {
-            // battery-friendly doorbell tile: never connects on its own —
-            // the Ring cam only wakes on a press or when the tile is tapped
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                TileHead(tile, nameColor, subColor, big = false)
-                Box(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.Videocam, null,
-                        Modifier.size(42.dp),
-                        tint = subColor.copy(alpha = .55f),
-                    )
-                }
-            }
+            DoorbellTileBody(tile, vm, nameColor, subColor)
             return@Surface
         }
         if (tile.kind == TileKind.CAMERA) {
@@ -1071,6 +1061,102 @@ fun TileCard(
                 )
             }
         }
+        }
+    }
+}
+
+/* battery-friendly doorbell tile: shows the server's LAST cached frame (from
+   the most recent ring or peek) with its age — refreshing it never touches
+   the camera, so the Ring's battery only pays for actual rings and taps */
+@Composable
+private fun DoorbellTileBody(tile: TileUi, vm: DashboardViewModel, nameColor: Color, subColor: Color) {
+    var snap by remember(tile.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var snapTs by remember(tile.key) { mutableStateOf(0L) }
+    var ageText by remember(tile.key) { mutableStateOf("") }
+    // keyed on ringAt so a fresh ring re-pulls the new frame right away
+    LaunchedEffect(tile.key, vm.ui.ringAt) {
+        while (isActive) {
+            try {
+                vm.cameraSnapshotCached(tile.camera!!.url)?.let { s ->
+                    android.graphics.BitmapFactory
+                        .decodeByteArray(s.bytes, 0, s.bytes.size)
+                        ?.let { snap = it; snapTs = s.ts }
+                }
+            } catch (_: Exception) { /* server briefly away; retry */ }
+            if (snapTs > 0) {
+                val mins = (System.currentTimeMillis() - snapTs) / 60_000L
+                ageText = when {
+                    mins < 1 -> "just now"
+                    mins < 60 -> "$mins min ago"
+                    else -> "${mins / 60} h ago"
+                }
+            }
+            // right after a ring the popup is still grabbing the new frame —
+            // check back quickly until we have something, then relax
+            delay(if (snap == null) 15_000 else 60_000)
+        }
+    }
+
+    val bmp = snap
+    if (bmp == null) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            TileHead(tile, nameColor, subColor, big = false)
+            Box(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Videocam, null,
+                    Modifier.size(42.dp),
+                    tint = subColor.copy(alpha = .55f),
+                )
+            }
+        }
+        return
+    }
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            bmp.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        // legibility scrim behind the header text
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Black.copy(alpha = .55f), Color.Transparent)
+                    )
+                )
+        )
+        Row(
+            Modifier.align(Alignment.TopStart).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(tileIcon(tile.kind), null, Modifier.size(18.dp), tint = Color.White)
+            Text(
+                tile.name,
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color.Black.copy(alpha = .45f),
+            modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
+        ) {
+            Text(
+                ageText,
+                color = Color.White.copy(alpha = .9f),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            )
         }
     }
 }

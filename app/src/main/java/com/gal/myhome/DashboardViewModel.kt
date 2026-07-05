@@ -270,6 +270,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun cameraSnapshot(rtspUrl: String): ByteArray = api.snapshot(rtspUrl)
 
+    suspend fun cameraSnapshotCached(rtspUrl: String): HomeApi.Snapshot? =
+        api.snapshotCached(rtspUrl)
+
     private fun pruneOverrides() {
         val now = System.currentTimeMillis()
         overrides.entries.removeIf { now - it.value.second > TOUCH_HOLD_MS }

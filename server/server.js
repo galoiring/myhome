@@ -322,23 +322,35 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url.startsWith('/api/snapshot') && req.method === 'GET') {
-      const q = new URL(req.url, 'http://x').searchParams.get('url') || '';
-      const rtsp = loopbackRtsp(q);
+      const params = new URL(req.url, 'http://x').searchParams;
+      const rtsp = loopbackRtsp(params.get('url') || '');
       if (!rtsp) {
         json(res, 400, { error: 'valid rtsp url required' });
         return;
       }
-      const now = Date.now();
-      if (snapCache.url === rtsp && now - snapCache.ts < SNAP_TTL_MS && snapCache.buf) {
-        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache' });
-        res.end(snapCache.buf);
+      const sendJpeg = (buf, ts) => {
+        res.writeHead(200, {
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'no-cache',
+          'X-Snapshot-Ts': String(ts),
+        });
+        res.end(buf);
+      };
+      // cached=only never touches the camera — the dashboard tile uses it to
+      // show the last frame from a ring/peek without waking a battery cam
+      if (params.get('cached') === 'only') {
+        if (snapCache.url === rtsp && snapCache.buf) sendJpeg(snapCache.buf, snapCache.ts);
+        else json(res, 404, { error: 'no cached snapshot yet' });
+        return;
+      }
+      if (snapCache.url === rtsp && Date.now() - snapCache.ts < SNAP_TTL_MS && snapCache.buf) {
+        sendJpeg(snapCache.buf, snapCache.ts);
         return;
       }
       try {
         const buf = await grabSnapshot(rtsp);
         snapCache = { url: rtsp, ts: Date.now(), buf };
-        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache' });
-        res.end(buf);
+        sendJpeg(buf, snapCache.ts);
       } catch (e) {
         json(res, 502, { error: 'snapshot failed: ' + String(e.message || e) });
       }
