@@ -34,6 +34,71 @@ const WEATHER_URL =
   '&timezone=auto&forecast_days=2';
 let weatherCache = { ts: 0, body: null };
 
+/* ---- sensor history: 5-minute samples of temp/humidity/PM2.5, 7-day ring,
+   persisted so restarts don't lose the chart data ---- */
+const HISTORY_FILE = path.join(__dirname, 'history.json');
+const HISTORY_SAMPLE_MS = 5 * 60 * 1000;
+const HISTORY_KEEP_MS = 7 * 24 * 3600 * 1000;
+// HomeKit characteristic short types -> series kind
+const HISTORY_TYPES = { 11: 'temp', 10: 'humidity', C6: 'pm25' };
+let history = {};
+try {
+  history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+} catch (_) {
+  /* first run */
+}
+
+// HAP may serialize types short ("11") or as full UUIDs — normalize to short
+function shortType(t) {
+  let s = String(t).toUpperCase();
+  const base = '-0000-1000-8000-0026BB765291';
+  if (s.endsWith(base)) s = s.slice(0, -base.length);
+  s = s.replace(/^0+/, '');
+  return s || '0';
+}
+
+async function sampleHistory() {
+  let j;
+  try {
+    const r = await hapRequest('GET', '/accessories');
+    j = JSON.parse(r.body);
+  } catch (_) {
+    return; // HAP briefly unreachable; try again next tick
+  }
+  const now = Date.now();
+  for (const acc of j.accessories || []) {
+    let name = 'Accessory ' + acc.aid;
+    for (const svc of acc.services || []) {
+      if (shortType(svc.type) !== '3E') continue; // AccessoryInformation
+      for (const ch of svc.characteristics || []) {
+        if (shortType(ch.type) === '23' && typeof ch.value === 'string') name = ch.value;
+      }
+    }
+    const seen = new Set(); // one sample per kind per accessory
+    for (const svc of acc.services || []) {
+      for (const ch of svc.characteristics || []) {
+        const kind = HISTORY_TYPES[shortType(ch.type)];
+        if (!kind || seen.has(kind) || typeof ch.value !== 'number') continue;
+        seen.add(kind);
+        const key = name + '|' + kind;
+        (history[key] = history[key] || []).push([now, Math.round(ch.value * 10) / 10]);
+      }
+    }
+  }
+  for (const k of Object.keys(history)) {
+    history[k] = history[k].filter((p) => now - p[0] < HISTORY_KEEP_MS);
+    if (!history[k].length) delete history[k];
+  }
+  try {
+    fs.writeFileSync(HISTORY_FILE + '.tmp', JSON.stringify(history));
+    fs.renameSync(HISTORY_FILE + '.tmp', HISTORY_FILE);
+  } catch (_) {
+    /* disk hiccup — memory copy still fine */
+  }
+}
+setInterval(sampleHistory, HISTORY_SAMPLE_MS);
+setTimeout(sampleHistory, 5000); // first sample shortly after boot
+
 function hapRequest(method, pathName, body) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
@@ -179,6 +244,11 @@ const server = http.createServer(async (req, res) => {
         }
       }
       json(res, 200, weatherCache.body);
+      return;
+    }
+
+    if (req.url === '/api/history' && req.method === 'GET') {
+      json(res, 200, history);
       return;
     }
 

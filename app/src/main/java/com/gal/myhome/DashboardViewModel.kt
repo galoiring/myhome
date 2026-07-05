@@ -109,12 +109,15 @@ data class TileUi(
     val width: TileWidth = TileWidth.MEDIUM,
     val height: TileHeight = TileHeight.NORMAL,
     val modeControl: SegCtl? = null,
+    // brightness pulled out of `controls`: the whole card acts as the dimmer
+    val dimmer: SliderCtl? = null,
 )
 
 data class UiState(
     val tiles: List<TileUi> = emptyList(),
     val weather: Weather? = null,
     val indoorTemp: Double? = null,
+    val powerW: Double? = null,
     val offline: Boolean = false,
     val loaded: Boolean = false,
 )
@@ -227,6 +230,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 if (!settingsLoaded.value) refreshServerSettings()
                 pruneOverrides()
                 rebuild(offline = false)
+                // after a doze the 10-min weather loop may not have ticked for
+                // hours — the fast poll nudges it so the header recovers
+                // seconds after the tablet wakes instead of showing 2am data
+                if (System.currentTimeMillis() - lastWeatherAt > 10 * 60 * 1000L) {
+                    viewModelScope.launch { fetchWeatherNow() }
+                }
             } catch (_: Exception) {
                 ui = ui.copy(offline = true)
             }
@@ -234,15 +243,25 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    @Volatile
+    private var lastWeatherAt = 0L
+
+    private suspend fun fetchWeatherNow() {
+        try {
+            ui = ui.copy(weather = api.weather())
+            lastWeatherAt = System.currentTimeMillis()
+        } catch (_: Exception) { /* retry next cycle */ }
+    }
+
     private suspend fun weatherLoop() {
         while (true) {
             api.baseUrl = prefs.value.serverUrl
-            try {
-                ui = ui.copy(weather = api.weather())
-            } catch (_: Exception) { /* retry next cycle */ }
+            fetchWeatherNow()
             delay(10 * 60 * 1000L)
         }
     }
+
+    suspend fun history(): Map<String, List<Pair<Long, Double>>> = api.history()
 
     private fun pruneOverrides() {
         val now = System.currentTimeMillis()
@@ -374,9 +393,17 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         ui = ui.copy(
             tiles = tiles,
             indoorTemp = indoorTemp(),
+            powerW = totalPowerW(),
             offline = offline,
             loaded = true,
         )
+    }
+
+    // only Shelly devices report power, so this is "everything metered", not
+    // a true whole-home number — still useful as a live activity signal
+    private fun totalPowerW(): Double? {
+        if (shellyDevs.isEmpty()) return null
+        return shellyDevs.sumOf { d -> d.comps.sumOf { if (it.state) it.apower else 0.0 } }
     }
 
     private fun indoorTemp(): Double? {
@@ -465,9 +492,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 hidden = key in serverSettings.hidden,
                 isGroup = false,
                 origNames = listOf(cfg.name),
+                dimmer = SliderCtl("$key:bright", "Brightness", "%", 1f, 100f, 1f,
+                    bright.toFloat(), false, emptyList(), YlRef(cfg.ip, "bright")),
                 controls = listOf(
-                    SliderCtl("$key:bright", "Brightness", "%", 1f, 100f, 1f,
-                        bright.toFloat(), false, emptyList(), YlRef(cfg.ip, "bright")),
                     SliderCtl("$key:ct", "Warmth", "", 0f, 100f, 1f,
                         warmth.toFloat(), true, emptyList(), YlRef(cfg.ip, "ct")),
                 ),
@@ -778,6 +805,15 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             sensors.removeAll { it.kind == SensorKind.TEMP }
         }
 
+        // lights: the main brightness leaves the control list — the whole
+        // card becomes the dimmer (drag across it); extra sliders (e.g. a
+        // moonlight brightness on multi-light accessories) stay as rows
+        var dimmer: SliderCtl? = null
+        if (kind == TileKind.LIGHT) {
+            dimmer = controls.filterIsInstance<SliderCtl>().firstOrNull { !it.warm }
+            dimmer?.let { controls.remove(it) }
+        }
+
         val hasToggle = toggleTargets.isNotEmpty()
         val parts = subParts.take(3).joinToString(" · ")
         val sub = when {
@@ -804,6 +840,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             toggleTargets = toggleTargets,
             toggleIsActive = toggleIsActive,
             modeControl = modeCtl,
+            dimmer = dimmer,
         )
     }
 

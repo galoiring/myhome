@@ -3,6 +3,7 @@ package com.gal.myhome
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.animateColorAsState
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -116,11 +117,19 @@ private fun App(vm: DashboardViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,
         ) {
-            // soft ambient color blobs behind the translucent tiles — the
-            // ViewModel's poll/clock ticks don't touch these theme colors,
-            // so this only redraws on an actual theme change, not every 3s
-            val primary = MaterialTheme.colorScheme.primary
-            val tertiary = MaterialTheme.colorScheme.tertiary
+            // soft ambient color blobs behind the translucent tiles, tinted
+            // by the time of day: fresh morning, theme accents midday, golden
+            // evening, deep-blue night. Only redraws when the hour bucket or
+            // theme changes, not on the ViewModel's 3s polls
+            val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
+            val (ambTarget1, ambTarget2) = when (hour) {
+                in 6..9 -> Color(0xFF7FD6A4) to Color(0xFF9BC7F7)
+                in 10..15 -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.tertiary
+                in 16..19 -> Color(0xFFFF9E5C) to Color(0xFFFF7E9D)
+                else -> Color(0xFF5A6BC8) to Color(0xFF2E7D8F)
+            }
+            val primary by animateColorAsState(ambTarget1, label = "ambient1")
+            val tertiary by animateColorAsState(ambTarget2, label = "ambient2")
             Box(
                 Modifier
                     .fillMaxSize()

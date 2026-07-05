@@ -112,6 +112,20 @@ class HomeApi {
         )
     }
 
+    // "<accessory name>|<temp|humidity|pm25>" -> [(epoch ms, value)]
+    suspend fun history(): Map<String, List<Pair<Long, Double>>> = withContext(Dispatchers.IO) {
+        val o = JSONObject(getBody("/api/history"))
+        buildMap {
+            o.keys().forEach { k ->
+                val arr = o.getJSONArray(k)
+                put(k, (0 until arr.length()).map { i ->
+                    val p = arr.getJSONArray(i)
+                    p.getLong(0) to p.getDouble(1)
+                })
+            }
+        }
+    }
+
     suspend fun settings(): ServerSettings = withContext(Dispatchers.IO) {
         val o = JSONObject(getBody("/api/settings"))
         val s = ServerSettings()

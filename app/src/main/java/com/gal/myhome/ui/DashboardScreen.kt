@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Curtains
 import androidx.compose.material.icons.rounded.Cyclone
@@ -129,6 +131,7 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /* signature "on" tints, independent of the dynamic palette so a lit tile
@@ -242,6 +245,7 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
 
         val tiles = ui.tiles.filter { !it.hidden }
         var liveCam by remember { mutableStateOf<CameraCfg?>(null) }
+        var historyTile by remember { mutableStateOf<TileUi?>(null) }
         when {
             !ui.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -258,10 +262,19 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 10.dp),
-            ) { t -> TileCard(t, vm, onOpenCamera = { liveCam = it }) }
+            ) { t ->
+                TileCard(
+                    t, vm,
+                    onOpenCamera = { liveCam = it },
+                    onOpenHistory = { historyTile = it },
+                )
+            }
         }
         liveCam?.let { cam ->
             CameraLiveView(name = cam.name, url = cam.url, onClose = { liveCam = null })
+        }
+        historyTile?.let { t ->
+            HistorySheet(t, vm, onClose = { historyTile = null })
         }
     }
 }
@@ -303,7 +316,7 @@ private fun HeaderRow(
             )
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            if (showWeather) WeatherStrip(ui.weather, ui.indoorTemp)
+            if (showWeather) WeatherStrip(ui.weather, ui.indoorTemp, ui.powerW)
         }
         if (ui.offline) {
             Text(
@@ -335,7 +348,7 @@ private fun HeaderRow(
 }
 
 @Composable
-private fun WeatherStrip(w: Weather?, indoor: Double?) {
+private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -399,6 +412,35 @@ private fun WeatherStrip(w: Weather?, indoor: Double?) {
                     )
                     Text(
                         "inside",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        // live metered power from the Shelly devices
+        if (power != null && power >= 1) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Bolt, null,
+                        Modifier.size(18.dp),
+                        tint = Color(0xFFF29900),
+                    )
+                    Text(
+                        "${power.roundToInt()}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "W",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -613,7 +655,12 @@ fun RoomGroupedGrid(
 /* ---------- tile ---------- */
 
 @Composable
-fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> Unit = {}) {
+fun TileCard(
+    tile: TileUi,
+    vm: DashboardViewModel,
+    onOpenCamera: (CameraCfg) -> Unit = {},
+    onOpenHistory: (TileUi) -> Unit = {},
+) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -645,7 +692,9 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
     val subColor = if (tinted) onContent.copy(alpha = .75f)
     else MaterialTheme.colorScheme.onSurfaceVariant
 
-    val tappable = tile.canToggle || tile.camera != null
+    // sensor tiles open their 24h history instead of toggling
+    val opensHistory = tile.kind == TileKind.SENSOR && !tile.canToggle
+    val tappable = tile.canToggle || tile.camera != null || opensHistory
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -660,7 +709,11 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
     Surface(
         onClick = {
             if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            tile.camera?.let { onOpenCamera(it) } ?: vm.toggleTile(tile)
+            when {
+                tile.camera != null -> onOpenCamera(tile.camera)
+                opensHistory -> onOpenHistory(tile)
+                else -> vm.toggleTile(tile)
+            }
         },
         enabled = tappable,
         interactionSource = interaction,
@@ -671,12 +724,6 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
             .fillMaxSize()
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
-        // soft glow wash for an active tile, clipped to the card's own rounded
-        // shape by Surface — no RenderEffect/blur() needed, works on minSdk 26
-        if (tinted) {
-            Box(Modifier.fillMaxSize().background(glowBrush))
-        }
-
         if (tile.kind == TileKind.CAMERA) {
             Box(Modifier.fillMaxSize()) {
                 tile.camera?.let { cfg -> CameraSnapshotBox(cfg.url, Modifier.fillMaxSize()) }
@@ -702,6 +749,64 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                 )
             }
             return@Surface
+        }
+
+        // drag anywhere across a light tile to dim it — the fill tracks the
+        // finger, tap still toggles; inner controls consume their own touches
+        var dimDrag by remember(tile.key) { mutableStateOf<Float?>(null) }
+        val dimmer = tile.dimmer
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(
+                    if (dimmer == null) Modifier
+                    else Modifier.pointerInput(tile.key) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { off ->
+                                dimDrag = (off.x / size.width * 100f).coerceIn(1f, 100f)
+                            },
+                            onHorizontalDrag = { change, _ ->
+                                dimDrag = (change.position.x / size.width * 100f)
+                                    .coerceIn(1f, 100f)
+                            },
+                            onDragEnd = {
+                                dimDrag?.let { v ->
+                                    if (prefs.hapticFeedback) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                    // setting brightness on an off light also turns it on
+                                    if (!tile.isOn) vm.toggleTile(tile)
+                                    if (dimmer.yl != null) vm.setYeelight(dimmer.yl, v.roundToInt())
+                                    else vm.sendChars(dimmer.targets, v.roundToInt())
+                                }
+                                dimDrag = null
+                            },
+                            onDragCancel = { dimDrag = null },
+                        )
+                    }
+                )
+        ) {
+        // brightness fill — doubles as the tile's level indicator at a glance
+        if (dimmer != null) {
+            val frac by animateFloatAsState(
+                if (tile.isOn || dimDrag != null) {
+                    ((dimDrag ?: dimmer.value) / 100f).coerceIn(0f, 1f)
+                } else 0f,
+                label = "dimFill",
+            )
+            if (frac > 0.01f) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(frac)
+                        .background(tint.iconCircle.copy(alpha = if (dark) 0.28f else 0.30f))
+                )
+            }
+        }
+        // soft glow wash for an active tile, clipped to the card's own rounded
+        // shape by Surface — no RenderEffect/blur() needed, works on minSdk 26
+        if (tinted) {
+            Box(Modifier.fillMaxSize().background(glowBrush))
         }
 
         val hasBody =
@@ -890,6 +995,24 @@ fun TileCard(tile: TileUi, vm: DashboardViewModel, onOpenCamera: (CameraCfg) -> 
                 }
             }
         }
+        // live % readout while dimming
+        dimDrag?.let { v ->
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = tint.iconCircle,
+                shadowElevation = 2.dp,
+                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+            ) {
+                Text(
+                    "${v.roundToInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = tint.iconTint,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+            }
+        }
+        }
     }
 }
 
@@ -989,10 +1112,56 @@ private fun ControlView(
     val c = if (dim) onColor.copy(alpha = .45f) else onColor
     val s = if (dim) subColor.copy(alpha = .45f) else subColor
     when (ctl) {
-        is SliderCtl -> SliderRow(ctl, vm, c, s, dim)
+        is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s) else SliderRow(ctl, vm, c, s, dim)
         is SegCtl -> SegRow(ctl, vm, c, s)
         is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
         is CurtainCtl -> CurtainRow(ctl, vm, c, s)
+    }
+}
+
+/* warmth as four fixed color-temperature stops — presets beat a fiddly
+   slider on a wall panel. min..max maps cool..warm on both HomeKit (mireds)
+   and Yeelight (0-100 warmth) scales, so fractions work for either. */
+@Composable
+private fun WarmthDots(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+    val presets = listOf(0f, 1f / 3f, 2f / 3f, 1f).map { ctl.min + (ctl.max - ctl.min) * it }
+    val dotColors = listOf(
+        Color(0xFFBCD9FF), Color(0xFFEFF2F7), Color(0xFFFFE9C0), Color(0xFFFFB84D),
+    )
+    val nearest = presets.minByOrNull { abs(it - ctl.value) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            ctl.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = subColor,
+            modifier = Modifier.width(66.dp),
+            maxLines = 1,
+        )
+        Spacer(Modifier.weight(1f))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            presets.forEachIndexed { i, v ->
+                val selected = v == nearest
+                Box(
+                    Modifier
+                        .size(if (selected) 34.dp else 28.dp)
+                        .clip(CircleShape)
+                        .background(dotColors[i])
+                        .then(
+                            if (selected) Modifier.border(2.5.dp, onColor, CircleShape)
+                            else Modifier
+                        )
+                        .clickable {
+                            val send = v.roundToInt()
+                            if (ctl.yl != null) vm.setYeelight(ctl.yl, send)
+                            else vm.sendChars(ctl.targets, send)
+                        }
+                )
+            }
+        }
+        Spacer(Modifier.width(4.dp))
     }
 }
 
