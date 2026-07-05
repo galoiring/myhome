@@ -268,6 +268,8 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun history(): Map<String, List<Pair<Long, Double>>> = api.history()
 
+    suspend fun cameraSnapshot(rtspUrl: String): ByteArray = api.snapshot(rtspUrl)
+
     private fun pruneOverrides() {
         val now = System.currentTimeMillis()
         overrides.entries.removeIf { now - it.value.second > TOUCH_HOLD_MS }

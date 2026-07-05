@@ -23,6 +23,12 @@ class HomeApi {
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
+    // a cold snapshot waits on ffmpeg's DTLS handshake + first keyframe (~6s),
+    // so it gets its own longer-read client
+    private val snapshotClient = OkHttpClient.Builder()
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .build()
 
     private fun url(path: String) = baseUrl.trimEnd('/') + path
 
@@ -110,6 +116,16 @@ class HomeApi {
             rainToday = daily.optJSONArray("precipitation_probability_max")?.optInt(0),
             hours = hours,
         )
+    }
+
+    /** One JPEG frame grabbed server-side from a camera's RTSP stream. */
+    suspend fun snapshot(rtspUrl: String): ByteArray = withContext(Dispatchers.IO) {
+        val enc = java.net.URLEncoder.encode(rtspUrl, "UTF-8")
+        snapshotClient.newCall(Request.Builder().url(url("/api/snapshot?url=$enc")).build())
+            .execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code} for snapshot")
+                resp.body?.bytes() ?: throw IOException("empty snapshot")
+            }
     }
 
     /** Epoch ms of the last doorbell press (0 = never); set by Scrypted

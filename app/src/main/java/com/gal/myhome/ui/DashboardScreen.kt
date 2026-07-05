@@ -284,7 +284,13 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
             }
         }
         liveCam?.let { cam ->
-            CameraLiveView(name = cam.name, url = cam.url, onClose = { liveCam = null })
+            // doorbell cams are WebRTC (unplayable by the RTSP player) — show
+            // server-rendered snapshots; other cams keep the live RTSP view
+            if (cam.doorbell) {
+                CameraSnapshotView(cam.name, cam.url, vm, onClose = { liveCam = null })
+            } else {
+                CameraLiveView(name = cam.name, url = cam.url, onClose = { liveCam = null })
+            }
         }
         historyTile?.let { t ->
             HistorySheet(t, vm, onClose = { historyTile = null })

@@ -8,6 +8,8 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
+const { URL } = require('url');
 
 const LISTEN_PORT = process.env.PORT || 8090;
 const HAP_HOST = process.env.HAP_HOST || '127.0.0.1';
@@ -37,6 +39,57 @@ let weatherCache = { ts: 0, body: null };
 // epoch ms of the last doorbell press (in-memory: a ring is only relevant
 // for the next minute, so it doesn't need to survive restarts)
 let doorbellRing = 0;
+
+/* ---- on-demand camera snapshot ----
+ * The Ring peephole is exposed by Scrypted as a WebRTC (DTLS-SRTP) stream,
+ * which the tablet's player can't decode. Instead we grab one JPEG frame
+ * server-side with the ffmpeg already inside the Scrypted container
+ * (SCRYPTED_DOCKER, default "scrypted") and hand the tablet a plain image —
+ * only when asked (ring or tap), so a battery camera isn't drained.
+ * The stream lives inside Scrypted, so the host part is forced to loopback. */
+const SCRYPTED_DOCKER = process.env.SCRYPTED_DOCKER || 'scrypted';
+const SNAP_TTL_MS = 8000;
+let snapCache = { url: null, ts: 0, buf: null };
+
+function loopbackRtsp(raw) {
+  let u;
+  try {
+    u = new URL(raw);
+  } catch (_) {
+    return null;
+  }
+  if (u.protocol !== 'rtsp:') return null;
+  const port = u.port || '554';
+  if (!/^\d+$/.test(port)) return null;
+  // reconstruct from parsed parts — nothing user-controlled reaches a shell
+  // (spawn with an arg array), and the host is pinned to the loopback where
+  // the Scrypted rebroadcast actually listens
+  return `rtsp://127.0.0.1:${port}${u.pathname}${u.search}`;
+}
+
+function grabSnapshot(rtspUrl) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      'exec', SCRYPTED_DOCKER,
+      'ffmpeg', '-nostdin', '-loglevel', 'error',
+      '-rtsp_transport', 'tcp', '-i', rtspUrl,
+      '-frames:v', '1', '-q:v', '4', '-f', 'mjpeg', 'pipe:1',
+    ];
+    const p = spawn('docker', args);
+    const chunks = [];
+    let err = '';
+    const killer = setTimeout(() => p.kill('SIGKILL'), 20000);
+    p.stdout.on('data', (c) => chunks.push(c));
+    p.stderr.on('data', (c) => (err += c));
+    p.on('error', reject);
+    p.on('close', (code) => {
+      clearTimeout(killer);
+      const buf = Buffer.concat(chunks);
+      if (buf.length > 0) resolve(buf);
+      else reject(new Error('ffmpeg produced no frame (code ' + code + '): ' + err.slice(0, 200)));
+    });
+  });
+}
 
 /* ---- sensor history: 5-minute samples of temp/humidity/PM2.5, 7-day ring,
    persisted so restarts don't lose the chart data ---- */
@@ -265,6 +318,30 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/doorbell/ring' && (req.method === 'POST' || req.method === 'GET')) {
       doorbellRing = Date.now();
       json(res, 200, { ok: true, ring: doorbellRing });
+      return;
+    }
+
+    if (req.url.startsWith('/api/snapshot') && req.method === 'GET') {
+      const q = new URL(req.url, 'http://x').searchParams.get('url') || '';
+      const rtsp = loopbackRtsp(q);
+      if (!rtsp) {
+        json(res, 400, { error: 'valid rtsp url required' });
+        return;
+      }
+      const now = Date.now();
+      if (snapCache.url === rtsp && now - snapCache.ts < SNAP_TTL_MS && snapCache.buf) {
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache' });
+        res.end(snapCache.buf);
+        return;
+      }
+      try {
+        const buf = await grabSnapshot(rtsp);
+        snapCache = { url: rtsp, ts: Date.now(), buf };
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache' });
+        res.end(buf);
+      } catch (e) {
+        json(res, 502, { error: 'snapshot failed: ' + String(e.message || e) });
+      }
       return;
     }
 
