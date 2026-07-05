@@ -12,3 +12,5 @@ keystore.properties
 # IPs) — personal, not source code
 server/settings.json
 server/settings.json.tmp
+server/history.json
+server/history.json.tmp

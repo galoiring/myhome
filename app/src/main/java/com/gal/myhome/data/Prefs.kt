@@ -39,7 +39,8 @@ private val DEFAULT_ROOMS = mapOf(
     "a:Curtain" to Room.LIVING,
     "a:Mi Air Purifier" to Room.LIVING,
     "a:מזגן AC" to Room.WHOLE_HOME,
-    "a:Ceeling light" to Room.BEDROOM,
+    "a:Ceeling light" to Room.BEDROOM, // pre-rename spelling, kept for old installs
+    "a:Ceiling Light" to Room.BEDROOM,
     "a:ceilb-4dc114" to Room.BABY,
     "a:Temperature and Humidity sensor" to Room.BABY,
 )

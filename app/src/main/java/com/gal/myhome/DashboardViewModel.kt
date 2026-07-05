@@ -83,6 +83,15 @@ data class ChipUi(
     val yl: YlRef? = null,
 )
 
+// moonlight/nightlight mode — HAP tiles drive the light's mode switch
+// services, pure-LAN Yeelight tiles go through YlRef instead
+data class MoonUi(
+    val on: Boolean,
+    val onTargets: List<Target>,
+    val offTargets: List<Target>,
+    val yl: YlRef? = null,
+)
+
 data class SensorUi(val kind: SensorKind, val value: String, val unit: String)
 
 data class ShellyRef(val ip: String, val compId: Int, val compType: String)
@@ -111,6 +120,7 @@ data class TileUi(
     val modeControl: SegCtl? = null,
     // brightness pulled out of `controls`: the whole card acts as the dimmer
     val dimmer: SliderCtl? = null,
+    val moon: MoonUi? = null,
 )
 
 data class UiState(
@@ -148,6 +158,11 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     var updateState by mutableStateOf<UpdateState>(UpdateState.Idle)
         private set
 
+    // latest full history dump (name|kind -> [ts, value]), refreshed every
+    // few minutes for the sensor-tile sparklines
+    var histories by mutableStateOf<Map<String, List<Pair<Long, Double>>>>(emptyMap())
+        private set
+
     private var accs: List<Acc> = emptyList()
     private var shellyDevs: List<ShellyDevice> = emptyList()
     private var ylStates: Map<String, YlState?> = emptyMap()
@@ -164,6 +179,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             refreshServerSettings()
             launch { pollLoop() }
             launch { weatherLoop() }
+            launch { historyLoop() }
             // prefs changes (rooms, sort, yeelights, cameras) reshape tiles immediately
             launch { prefs.collect { if (ui.loaded) rebuild(ui.offline) } }
             launch { checkForUpdate() }
@@ -268,6 +284,22 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun history(): Map<String, List<Pair<Long, Double>>> = api.history()
 
+    // periodic snapshot of the same history the HistorySheet fetches on
+    // demand — feeds the always-visible sparklines on sensor tiles
+    private suspend fun historyLoop() {
+        while (true) {
+            if (!ui.loaded) {
+                delay(5_000L)
+                continue
+            }
+            api.baseUrl = prefs.value.serverUrl
+            try {
+                histories = api.history()
+            } catch (_: Exception) { /* older server — retry next cycle */ }
+            delay(5 * 60 * 1000L)
+        }
+    }
+
     suspend fun cameraSnapshot(rtspUrl: String): ByteArray = api.snapshot(rtspUrl)
 
     suspend fun cameraSnapshotCached(rtspUrl: String): HomeApi.Snapshot? =
@@ -289,6 +321,24 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         rebuild(ui.offline)
         viewModelScope.launch {
             try { api.setChars(targets, value) } catch (_: Exception) { /* next poll restores truth */ }
+        }
+    }
+
+    fun toggleMoon(tile: TileUi) {
+        val m = tile.moon ?: return
+        if (m.yl != null) {
+            setYeelight(m.yl, !m.on)
+            return
+        }
+        when {
+            !m.on -> sendChars(m.onTargets, true)
+            // day/night mode pairs: leaving moonlight means turning day mode
+            // on; the pill reads the night switch, so pin it off optimistically
+            m.offTargets.isNotEmpty() -> {
+                for (t in m.onTargets) override("${t.aid}.${t.iid}", false)
+                sendChars(m.offTargets, true)
+            }
+            else -> sendChars(m.onTargets, false)
         }
     }
 
@@ -509,10 +559,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     SliderCtl("$key:ct", "Warmth", "", 0f, 100f, 1f,
                         warmth.toFloat(), true, emptyList(), YlRef(cfg.ip, "ct")),
                 ),
-                chips = if (st?.moonSupported == true) listOf(
-                    ChipUi("$key:moon", "Moonlight", moon, false, emptyList(),
-                        YlRef(cfg.ip, "moon"))
-                ) else emptyList(),
+                chips = emptyList(),
+                moon = if (st?.moonSupported == true)
+                    MoonUi(moon, emptyList(), emptyList(), YlRef(cfg.ip, "moon"))
+                else null,
                 sensors = emptyList(),
                 shelly = null,
                 toggleTargets = emptyList(),
@@ -644,6 +694,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         var toggleIsActive = false
         var modeCtl: SegCtl? = null
         var mainToggleSet = false
+        var moonOn = false
+        var moonOnTargets = emptyList<Target>()
+        var moonOffTargets = emptyList<Target>()
         var onAny = false
         val subParts = mutableListOf<String>()
         val occCount = mutableMapOf<String, Int>()
@@ -660,6 +713,19 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             val active = svc.ch(T.ACTIVE)
 
             if ((svc.type == SVC.SWITCH || svc.type == SVC.OUTLET || svc.type == SVC.FAN) && mainToggleSet && on != null) {
+                // Yeelight ceiling lights expose moonlight as extra switch
+                // services ("Moonlight Mode", or "Mode Day"/"Mode Night") —
+                // fold those into the moon control instead of generic chips
+                val nm = svcName(svc, "Switch").trim().lowercase().replace(Regex("\\s+"), " ")
+                if (svc.type == SVC.SWITCH && (nm.contains("moonlight") || nm == "mode night")) {
+                    moonOn = chrValue(acc.aid, on).asBool()
+                    moonOnTargets = tg(T.ON)
+                    continue
+                }
+                if (svc.type == SVC.SWITCH && nm == "mode day") {
+                    moonOffTargets = tg(T.ON)
+                    continue
+                }
                 chips.add(ChipUi(cid(on), svcName(svc, "Switch"),
                     chrValue(acc.aid, on).asBool(), false, tg(T.ON)))
                 continue
@@ -852,6 +918,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             toggleIsActive = toggleIsActive,
             modeControl = modeCtl,
             dimmer = dimmer,
+            moon = if (moonOnTargets.isNotEmpty()) MoonUi(moonOn, moonOnTargets, moonOffTargets) else null,
         )
     }
 

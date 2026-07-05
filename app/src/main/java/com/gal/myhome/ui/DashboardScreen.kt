@@ -93,6 +93,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1013,6 +1017,26 @@ fun TileCard(
                             }
                         }
                     }
+                    // 24h trend under the hero fills the tile's dead space —
+                    // skipped in Half height, where there's no room for it
+                    if (tile.height == TileHeight.NORMAL) {
+                        val suffix = if (temp != null) "temp" else if (pm25 != null) "pm25" else null
+                        val series = suffix?.let { sfx ->
+                            tile.origNames.firstNotNullOfOrNull { vm.histories["$it|$sfx"] }
+                        }
+                        val dayAgo = System.currentTimeMillis() - 24 * 3600 * 1000L
+                        val pts = series?.filter { it.first >= dayAgo }.orEmpty()
+                        if (pts.size >= 2) {
+                            Sparkline(
+                                pts,
+                                color = pmStatus?.second ?: nameColor.copy(alpha = 0.75f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp)
+                                    .height(34.dp),
+                            )
+                        }
+                    }
                 }
             } else {
                 TileHead(
@@ -1042,7 +1066,7 @@ fun TileCard(
                                 Modifier.weight(1f).fillMaxWidth(),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls)
+                                ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls, moonTile = tile)
                             }
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
@@ -1058,7 +1082,7 @@ fun TileCard(
                         verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         tile.controls.forEach {
-                            ControlView(it, vm, nameColor, subColor, soloStepper, dimControls)
+                            ControlView(it, vm, nameColor, subColor, soloStepper, dimControls, moonTile = tile)
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
                         if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
@@ -1286,13 +1310,15 @@ private fun ControlView(
     subColor: Color,
     soloStepper: Boolean = false,
     dim: Boolean = false,
+    moonTile: TileUi? = null,
 ) {
     // controls on an off tile fade out so on/off reads at a glance from
     // across the room — a bold 100% brightness bar on an off light lies
     val c = if (dim) onColor.copy(alpha = .45f) else onColor
     val s = if (dim) subColor.copy(alpha = .45f) else subColor
     when (ctl) {
-        is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s) else SliderRow(ctl, vm, c, s, dim)
+        // the moon pill (if any) lives in the warmth row's label slot
+        is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s, moonTile) else SliderRow(ctl, vm, c, s, dim)
         is SegCtl -> SegRow(ctl, vm, c, s)
         is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
         is CurtainCtl -> CurtainRow(ctl, vm, c, s)
@@ -1370,15 +1396,85 @@ private fun BrightnessBar(
 /* warmth as four fixed color-temperature stops — presets beat a fiddly
    slider on a wall panel. min..max maps cool..warm on both HomeKit (mireds)
    and Yeelight (0-100 warmth) scales, so fractions work for either. */
+/* tiny 24h trend line under a sensor hero — min/max-normalized so the shape
+   always uses the full height, with a soft gradient fill below the line */
 @Composable
-private fun WarmthDots(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+private fun Sparkline(points: List<Pair<Long, Double>>, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val minV = points.minOf { it.second }
+        val maxV = points.maxOf { it.second }
+        val span = (maxV - minV).takeIf { it > 0.0001 }
+        val t0 = points.first().first
+        val tSpan = (points.last().first - t0).coerceAtLeast(1L).toFloat()
+        val pad = 3.dp.toPx()
+        fun x(ts: Long) = (ts - t0) / tSpan * size.width
+        fun y(v: Double): Float {
+            // constant series draws as a flat mid-line
+            val f = if (span == null) 0.5f else ((v - minV) / span).toFloat()
+            return size.height - pad - f * (size.height - 2 * pad)
+        }
+        val line = Path()
+        points.forEachIndexed { i, (ts, v) ->
+            if (i == 0) line.moveTo(x(ts), y(v)) else line.lineTo(x(ts), y(v))
+        }
+        val fill = Path().apply {
+            addPath(line)
+            lineTo(x(points.last().first), size.height)
+            lineTo(0f, size.height)
+            close()
+        }
+        drawPath(fill, Brush.verticalGradient(
+            listOf(color.copy(alpha = 0.22f), color.copy(alpha = 0f)),
+            endY = size.height,
+        ))
+        drawPath(line, color, style = Stroke(
+            width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round,
+        ))
+    }
+}
+
+@Composable
+private fun MoonPill(tile: TileUi, vm: DashboardViewModel, subColor: Color, modifier: Modifier = Modifier) {
+    val moonOn = tile.moon?.on == true
+    val haptics = LocalHapticFeedback.current
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    Surface(
+        onClick = {
+            if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            vm.toggleMoon(tile)
+        },
+        shape = RoundedCornerShape(50),
+        color = if (moonOn) Color(0xFF3A3563)
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier,
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(
+                Icons.Rounded.Bedtime, "Moonlight mode",
+                Modifier.size(17.dp),
+                tint = if (moonOn) Color(0xFFC9C2FF) else subColor,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WarmthDots(
+    ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color,
+    moonTile: TileUi? = null,
+) {
     val presets = listOf(0f, 1f / 3f, 2f / 3f, 1f).map { ctl.min + (ctl.max - ctl.min) * it }
     val dotColors = listOf(
         Color(0xFFBCD9FF), Color(0xFFEFF2F7), Color(0xFFFFE9C0), Color(0xFFFFB84D),
     )
     val nearest = presets.minByOrNull { abs(it - ctl.value) }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
+        if (moonTile?.moon != null) {
+            // moonlight matters more than the label on these lights — the
+            // pill takes over the label slot (same width keeps rows aligned)
+            MoonPill(moonTile, vm, subColor, Modifier.width(58.dp).height(34.dp))
+            Spacer(Modifier.width(8.dp))
+        } else Text(
             ctl.label,
             style = MaterialTheme.typography.bodySmall,
             color = subColor,
