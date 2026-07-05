@@ -246,6 +246,19 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
         val tiles = ui.tiles.filter { !it.hidden }
         var liveCam by remember { mutableStateOf<CameraCfg?>(null) }
         var historyTile by remember { mutableStateOf<TileUi?>(null) }
+
+        // doorbell press (relayed by the server) pops the live view once per
+        // ring; closing it early doesn't reopen for the same press
+        val doorbellCam = prefs.cameras.firstOrNull { it.doorbell }
+        var handledRing by remember { mutableStateOf(0L) }
+        LaunchedEffect(ui.ringAt) {
+            if (doorbellCam != null && ui.ringAt > handledRing &&
+                System.currentTimeMillis() - ui.ringAt < 45_000L
+            ) {
+                handledRing = ui.ringAt
+                liveCam = doorbellCam
+            }
+        }
         when {
             !ui.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -724,6 +737,24 @@ fun TileCard(
             .fillMaxSize()
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
+        if (tile.kind == TileKind.CAMERA && tile.camera?.doorbell == true) {
+            // battery-friendly doorbell tile: never connects on its own —
+            // the Ring cam only wakes on a press or when the tile is tapped
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                TileHead(tile, nameColor, subColor, big = false)
+                Box(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.Videocam, null,
+                        Modifier.size(42.dp),
+                        tint = subColor.copy(alpha = .55f),
+                    )
+                }
+            }
+            return@Surface
+        }
         if (tile.kind == TileKind.CAMERA) {
             Box(Modifier.fillMaxSize()) {
                 tile.camera?.let { cfg -> CameraSnapshotBox(cfg.url, Modifier.fillMaxSize()) }

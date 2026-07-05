@@ -34,6 +34,10 @@ const WEATHER_URL =
   '&timezone=auto&forecast_days=2';
 let weatherCache = { ts: 0, body: null };
 
+// epoch ms of the last doorbell press (in-memory: a ring is only relevant
+// for the next minute, so it doesn't need to survive restarts)
+let doorbellRing = 0;
+
 /* ---- sensor history: 5-minute samples of temp/humidity/PM2.5, 7-day ring,
    persisted so restarts don't lose the chart data ---- */
 const HISTORY_FILE = path.join(__dirname, 'history.json');
@@ -249,6 +253,18 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/history' && req.method === 'GET') {
       json(res, 200, history);
+      return;
+    }
+
+    // Scrypted (or anything on the LAN) hits /ring when the doorbell is
+    // pressed; the app polls /api/doorbell and pops its live view
+    if (req.url === '/api/doorbell' && req.method === 'GET') {
+      json(res, 200, { ring: doorbellRing });
+      return;
+    }
+    if (req.url === '/api/doorbell/ring' && (req.method === 'POST' || req.method === 'GET')) {
+      doorbellRing = Date.now();
+      json(res, 200, { ok: true, ring: doorbellRing });
       return;
     }
 

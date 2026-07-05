@@ -792,6 +792,7 @@ private fun AddYeelightDialog(
 private fun AddCameraDialog(onDismiss: () -> Unit, onAdd: (CameraCfg) -> Unit) {
     var name by remember { mutableStateOf("Doorbell") }
     var url by remember { mutableStateOf("rtsp://") }
+    var doorbell by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add camera") },
@@ -809,11 +810,18 @@ private fun AddCameraDialog(onDismiss: () -> Unit, onAdd: (CameraCfg) -> Unit) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                SwitchRow(
+                    "Doorbell mode",
+                    "No periodic snapshots (kind to a battery cam); the live view opens by itself when the bell rings",
+                    doorbell,
+                ) { doorbell = it }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onAdd(CameraCfg(name.trim().ifEmpty { "Camera" }, url.trim())) },
+                onClick = {
+                    onAdd(CameraCfg(name.trim().ifEmpty { "Camera" }, url.trim(), doorbell))
+                },
                 enabled = url.trim().startsWith("rtsp://") && url.trim().length > 10,
             ) { Text("Add") }
         },

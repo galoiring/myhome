@@ -112,6 +112,12 @@ class HomeApi {
         )
     }
 
+    /** Epoch ms of the last doorbell press (0 = never); set by Scrypted
+     * calling the server's /api/doorbell/ring webhook. */
+    suspend fun doorbellRing(): Long = withContext(Dispatchers.IO) {
+        JSONObject(getBody("/api/doorbell")).optLong("ring", 0L)
+    }
+
     // "<accessory name>|<temp|humidity|pm25>" -> [(epoch ms, value)]
     suspend fun history(): Map<String, List<Pair<Long, Double>>> = withContext(Dispatchers.IO) {
         val o = JSONObject(getBody("/api/history"))

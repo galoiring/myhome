@@ -65,7 +65,10 @@ private val DEFAULT_SIZES = mapOf(
 )
 
 data class YeelightCfg(val ip: String, val name: String)
-data class CameraCfg(val name: String, val url: String)
+
+// doorbell mode: the tile never connects on its own (kind to a battery cam)
+// and the live view pops up automatically when the bell rings
+data class CameraCfg(val name: String, val url: String, val doorbell: Boolean = false)
 
 data class Prefs(
     // placeholder — every install needs to set its own backend host in Settings
@@ -189,7 +192,11 @@ class PrefsRepo(private val context: Context) {
             val a = JSONArray(v)
             (0 until a.length()).map { i ->
                 val o = a.getJSONObject(i)
-                CameraCfg(o.optString("name", "Camera"), o.getString("url"))
+                CameraCfg(
+                    o.optString("name", "Camera"),
+                    o.getString("url"),
+                    o.optBoolean("doorbell", false),
+                )
             }
         } catch (_: Exception) { emptyList() }
     }
@@ -247,6 +254,7 @@ class PrefsRepo(private val context: Context) {
             }).toString()
             p[K.cameras] = JSONArray(prefs.cameras.map {
                 JSONObject().put("name", it.name).put("url", it.url)
+                    .put("doorbell", it.doorbell)
             }).toString()
             p[K.tileOrder] = JSONArray(prefs.tileOrder).toString()
             p[K.tileSizes] = JSONObject(prefs.tileSizes.mapValues {

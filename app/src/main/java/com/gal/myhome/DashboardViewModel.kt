@@ -118,6 +118,8 @@ data class UiState(
     val weather: Weather? = null,
     val indoorTemp: Double? = null,
     val powerW: Double? = null,
+    // epoch ms of the last doorbell press, 0 = never
+    val ringAt: Long = 0L,
     val offline: Boolean = false,
     val loaded: Boolean = false,
 )
@@ -149,6 +151,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private var accs: List<Acc> = emptyList()
     private var shellyDevs: List<ShellyDevice> = emptyList()
     private var ylStates: Map<String, YlState?> = emptyMap()
+    private var ringAt = 0L
     var serverSettings = ServerSettings()
         private set
 
@@ -219,12 +222,14 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 coroutineScope {
                     val a = async { api.accessories() }
                     val s = async { try { api.shelly() } catch (_: Exception) { shellyDevs } }
+                    val d = async { try { api.doorbellRing() } catch (_: Exception) { ringAt } }
                     // Yeelights are independent of the server; state() returns null on error
                     val y = prefs.value.yeelights.map { cfg ->
                         async { cfg.ip to ylClient.state(cfg.ip) }
                     }
                     accs = a.await()
                     shellyDevs = s.await()
+                    ringAt = d.await()
                     ylStates = y.awaitAll().toMap()
                 }
                 if (!settingsLoaded.value) refreshServerSettings()
@@ -394,6 +399,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             tiles = tiles,
             indoorTemp = indoorTemp(),
             powerW = totalPowerW(),
+            ringAt = ringAt,
             offline = offline,
             loaded = true,
         )
@@ -514,7 +520,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             list.add(TileUi(
                 key = key,
                 name = serverSettings.names[key] ?: cfg.name,
-                sub = "Tap for live view",
+                sub = if (cfg.doorbell) "Opens on ring · tap to peek" else "Tap for live view",
                 kind = TileKind.CAMERA,
                 isOn = false,
                 canToggle = false,
