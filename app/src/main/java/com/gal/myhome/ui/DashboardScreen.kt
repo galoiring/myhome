@@ -831,7 +831,7 @@ fun TileCard(
             if (yl != null) vm.setYeelight(yl, v.roundToInt())
             else dimmer?.let { vm.sendChars(it.targets, v.roundToInt()) }
         }
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .then(
@@ -854,6 +854,10 @@ fun TileCard(
                     }
                 )
         ) {
+        // the tile's real rendered height — a Half-configured tile with no
+        // stacking partner renders full height, and a Normal one can end up
+        // short in a stacked column, so config height can't gate content
+        val tileMaxHeight = maxHeight
         // brightness fill — the tile's level at a glance; soft trailing edge
         // so a mid-level fill doesn't slice a tall tile with a hard line
         if (dimmer != null) {
@@ -1018,8 +1022,9 @@ fun TileCard(
                         }
                     }
                     // 24h trend under the hero fills the tile's dead space —
-                    // skipped in Half height, where there's no room for it
-                    if (tile.height == TileHeight.NORMAL) {
+                    // gated on the measured slot height (not the configured
+                    // size), so it draws whenever there's actually room for it
+                    if (tileMaxHeight >= 190.dp) {
                         val suffix = if (temp != null) "temp" else if (pm25 != null) "pm25" else null
                         val series = suffix?.let { sfx ->
                             tile.origNames.firstNotNullOfOrNull { vm.histories["$it|$sfx"] }

@@ -1,5 +1,8 @@
 package com.gal.myhome.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -69,11 +73,28 @@ fun HistorySheet(tile: TileUi, vm: DashboardViewModel, onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // Dialog windows pop in with no transition of their own — animate the
+        // card in with a springy fade + scale + rise from the tapped tile
+        var shown by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { shown = true }
+        val appear by animateFloatAsState(
+            if (shown) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+            label = "historyAppear",
+        )
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             tonalElevation = 3.dp,
-            modifier = Modifier.width(620.dp),
+            modifier = Modifier
+                .width(620.dp)
+                .graphicsLayer {
+                    // the spring overshoots past 1 for the pop — keep alpha legal
+                    alpha = appear.coerceIn(0f, 1f)
+                    scaleX = 0.9f + 0.1f * appear
+                    scaleY = 0.9f + 0.1f * appear
+                    translationY = (1f - appear) * 28.dp.toPx()
+                },
         ) {
             Column(Modifier.padding(24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

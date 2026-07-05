@@ -1,6 +1,6 @@
 {
-  "versionCode": 19,
-  "versionName": "1.1.0",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.0/app-release.apk",
-  "notes": "Moonlight button on the baby/bedroom light tiles, 24h trend sparklines on the Air Quality and Baby Room sensor tiles."
+  "versionCode": 20,
+  "versionName": "1.1.1",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.1/app-release.apk",
+  "notes": "Sparklines now show whenever the tile has room; ambient ring slider labeled 'Ambient'; history popup opens with an animation."
 }
