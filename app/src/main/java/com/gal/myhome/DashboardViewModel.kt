@@ -744,13 +744,16 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             svc.ch(T.BRIGHT)?.let { c ->
-                // multi-light accessories (main + moonlight): label sliders by service;
-                // when both lights share the accessory's name (Yeelight ceiling
-                // lights), tell the color/backlight ring apart by its hue char —
-                // otherwise the tile shows two identical "Brightness" rows
+                // Yeelight ceiling lights expose a second color/backlight ring
+                // light that shares the accessory's name (recognized by its hue
+                // char) — its slider just reads as a duplicate Brightness row on
+                // the tile, so skip it; the main light's slider is the card-wide
+                // dimmer and the moon pill covers the nightlight case
+                if (hasMultipleLights && svc.ch(T.HUE) != null &&
+                    svcName(svc, "") == acc.origName) return@let
+                // multi-light accessories (main + moonlight): label sliders by service
                 val label = svcName(svc, "Brightness")
-                    .takeIf { hasMultipleLights && it != acc.origName }
-                    ?: if (hasMultipleLights && svc.ch(T.HUE) != null) "Ambient" else "Brightness"
+                    .takeIf { hasMultipleLights && it != acc.origName } ?: "Brightness"
                 controls.add(SliderCtl(cid(c), label, "%",
                     (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
                     (c.minStep ?: 1.0).toFloat(),

@@ -1,6 +1,6 @@
 {
-  "versionCode": 20,
-  "versionName": "1.1.1",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.1/app-release.apk",
-  "notes": "Sparklines now show whenever the tile has room; ambient ring slider labeled 'Ambient'; history popup opens with an animation."
+  "versionCode": 21,
+  "versionName": "1.1.2",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.2/app-release.apk",
+  "notes": "Removed the duplicate brightness slider (ambient color ring) on multi-light Yeelight ceiling tiles."
 }
