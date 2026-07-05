@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<!-- POC mockup only — never served by the dashboard. Explores a
+     HomeKit/Google-Home-inspired layout: greeting header with home summary,
+     room filter chips, a scenes row, and sensor tiles with trends.
+     Open directly in a browser; each artboard is a 1280x800 tablet frame. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>myhome — redesign POC</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, "SF Pro Text", Roboto, "Segoe UI", sans-serif; }
+  body { background: #2a2d33; padding: 30px; display: flex; flex-direction: column; gap: 40px; align-items: center; }
+  .board {
+    width: 1280px; height: 800px; border-radius: 24px; overflow: hidden;
+    padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .board.dark {
+    --bg: linear-gradient(160deg, #10131a 0%, #171b25 55%, #1a1826 100%);
+    --card: rgba(255,255,255,.055); --card-edge: rgba(255,255,255,.09);
+    --txt: #eef1f7; --sub: #9aa3b2; --chipbg: rgba(255,255,255,.08);
+    --accent: #ffd479; --on-tile: linear-gradient(135deg, rgba(255,196,77,.28), rgba(255,171,46,.10));
+    --on-edge: rgba(255,205,112,.35); --scene: rgba(122,132,255,.16);
+    background: var(--bg); color: var(--txt);
+  }
+  .board.light {
+    --bg: linear-gradient(160deg, #eef1f6 0%, #e8ecf4 55%, #ece9f4 100%);
+    --card: rgba(255,255,255,.72); --card-edge: rgba(20,30,60,.08);
+    --txt: #1c2230; --sub: #66707f; --chipbg: rgba(20,30,60,.06);
+    --accent: #e8960c; --on-tile: linear-gradient(135deg, rgba(255,196,77,.45), rgba(255,214,130,.22));
+    --on-edge: rgba(216,150,30,.35); --scene: rgba(96,108,255,.12);
+    background: var(--bg); color: var(--txt);
+  }
+
+  /* ---- header ---- */
+  .hdr { display: flex; align-items: center; gap: 18px; }
+  .hdr .greet .big { font-size: 26px; font-weight: 700; letter-spacing: .2px; }
+  .hdr .greet .sum { font-size: 14px; color: var(--sub); margin-top: 3px; }
+  .hdr .greet .sum b { color: var(--txt); font-weight: 600; }
+  .spacer { flex: 1; }
+  .wx { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--card-edge); border-radius: 18px; padding: 8px 16px; }
+  .wx .now { font-size: 24px; font-weight: 700; }
+  .wx .cond { font-size: 12px; color: var(--sub); line-height: 1.5; }
+  .hours { display: flex; gap: 12px; }
+  .hours div { text-align: center; font-size: 11px; color: var(--sub); }
+  .hours b { display: block; font-size: 12px; color: var(--txt); margin-top: 2px; }
+  .statchip { display: flex; align-items: center; gap: 7px; background: var(--card); border: 1px solid var(--card-edge); border-radius: 999px; padding: 9px 15px; font-size: 13px; font-weight: 600; }
+  .statchip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .gear { width: 40px; height: 40px; border-radius: 50%; background: var(--chipbg); display: grid; place-items: center; font-size: 17px; }
+
+  /* ---- room chips + scenes ---- */
+  .chips { display: flex; gap: 10px; align-items: center; }
+  .chip { padding: 9px 18px; border-radius: 999px; background: var(--chipbg); font-size: 13.5px; font-weight: 600; color: var(--sub); }
+  .chip.sel { background: var(--txt); color: var(--bgc, #10131a); }
+  .board.light .chip.sel { color: #fff; }
+  .chips .divider { width: 1px; height: 22px; background: var(--card-edge); margin: 0 6px; }
+  .scene { display: flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 14px; background: var(--scene); border: 1px solid var(--card-edge); font-size: 13px; font-weight: 600; }
+
+  /* ---- grid ---- */
+  .grid { flex: 1; display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 1fr; gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--card-edge); border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .tile.on { background: var(--on-tile); border-color: var(--on-edge); }
+  .thead { display: flex; align-items: center; gap: 10px; }
+  .ticon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; background: var(--chipbg); flex: none; }
+  .tile.on .ticon { background: rgba(255,205,112,.30); }
+  .tname { font-size: 14.5px; font-weight: 650; line-height: 1.25; }
+  .tsub { font-size: 11.5px; color: var(--sub); margin-top: 1px; }
+  .grow { flex: 1; }
+
+  .lvl { height: 24px; border-radius: 12px; background: var(--chipbg); position: relative; overflow: hidden; margin-top: 10px; }
+  .lvl .fill { position: absolute; inset: 0 auto 0 0; border-radius: 12px; background: linear-gradient(90deg, #ffca62, #ffb84d); }
+  .lvl span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 10.5px; font-weight: 700; color: #5d4200; }
+  .dots { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .moonpill { width: 52px; height: 30px; border-radius: 999px; background: #3a3563; display: grid; place-items: center; font-size: 14px; }
+  .dots .d { width: 24px; height: 24px; border-radius: 50%; }
+  .dots .d.sel { outline: 2.5px solid var(--txt); outline-offset: 2px; }
+
+  .hero { text-align: center; }
+  .hero .v { font-size: 40px; font-weight: 650; }
+  .hero .u { font-size: 13px; color: var(--sub); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-weight: 650; }
+  svg.spark { width: 100%; height: 34px; margin-top: 8px; }
+
+  .seg { display: flex; border: 1px solid var(--card-edge); border-radius: 999px; overflow: hidden; margin-top: 10px; }
+  .seg div { flex: 1; text-align: center; padding: 8px 0; font-size: 12px; font-weight: 600; color: var(--sub); }
+  .seg .sel { background: #bcd9ff; color: #10203c; font-weight: 700; }
+
+  .cam { background: #383d44 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23383d44"/><path d="M0 62 L46 40 L80 55 L80 80 L0 80 Z" fill="%23434a52"/><rect x="52" y="18" width="9" height="16" fill="%23555d66" /></svg>') center/cover; }
+  .cam .badge { position: absolute; left: 12px; bottom: 10px; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; padding: 4px 10px; border-radius: 999px; }
+  .cam .tname, .cam .tsub { color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  .cam .ticon { background: rgba(0,0,0,.35); color: #fff; }
+
+  .label { font-size: 12px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--sub); margin: 2px 2px -4px; }
+  .caption { color: #cfd5e0; font-size: 14px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="caption">Dark — proposed layout (greeting + summary header, room chips, scenes row, trend-aware tiles)</div>
+
+<section class="board dark">
+  <!-- header: greeting + home summary chips + weather w/ hourly -->
+  <div class="hdr">
+    <div class="greet">
+      <div class="big">Good evening</div>
+      <div class="sum">Sunday, July 5 · <b>23.5°</b> inside · <b>72 W</b> · <b>2 lights</b> on</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="wx">
+      <div style="font-size:26px">🌤️</div>
+      <div><div class="now">27°</div><div class="cond">Partly cloudy · feels 31°<br>↑30° ↓25° · 💧80%</div></div>
+      <div class="hours">
+        <div>21<b>26°</b></div><div>22<b>26°</b></div><div>23<b>25°</b></div>
+        <div>00<b>25°</b></div><div>01<b>25°</b></div><div>02<b>25°</b></div>
+      </div>
+    </div>
+    <div class="statchip"><span class="dot" style="background:#34a853"></span> Air Good</div>
+    <div class="gear">⚙️</div>
+  </div>
+
+  <!-- room filter chips + scene shortcuts on one row -->
+  <div class="chips">
+    <div class="chip sel">All</div>
+    <div class="chip">Living Room</div>
+    <div class="chip">Bedroom</div>
+    <div class="chip">Baby Room</div>
+    <div class="chip">Whole home</div>
+    <div class="divider"></div>
+    <div class="scene">🌙 Good Night</div>
+    <div class="scene">🎬 Movie</div>
+    <div class="scene">🚪 Away</div>
+    <div class="spacer"></div>
+    <div class="chip">✦ Edit</div>
+  </div>
+
+  <div class="grid">
+    <!-- row 1 -->
+    <div class="tile on" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">💡</div><div><div class="tname">Living Room Main Light</div><div class="tsub">100%</div></div></div>
+      <div class="dots">
+        <div class="moonpill">🌙</div>
+        <div class="grow"></div>
+        <div class="d" style="background:#bcd9ff"></div><div class="d" style="background:#eff2f7"></div>
+        <div class="d sel" style="background:#ffe9c0"></div><div class="d" style="background:#ffb84d"></div>
+      </div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:100%"></div><span>100%</span></div>
+    </div>
+    <div class="tile on" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">💡</div><div><div class="tname">Kitchen Light</div><div class="tsub">On · 59 W</div></div></div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:80%"></div><span>80%</span></div>
+    </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(122,197,255,.18)">❄️</div><div><div class="tname">מזגן AC</div><div class="tsub">Cooling · 25°C ▾</div></div></div>
+      <div class="seg"><div class="sel">✓ Low</div><div>Medium</div><div>High</div></div>
+      <div class="grow"></div>
+      <div style="display:flex;align-items:center;justify-content:space-around">
+        <div class="ticon">−</div><div style="font-size:34px;font-weight:650">25°</div><div class="ticon">＋</div>
+      </div>
+    </div>
+
+    <!-- row 2 -->
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(52,168,83,.2)">🌡️</div><div><div class="tname">Air Quality</div><div class="tsub">Mi Air Purifier</div></div></div>
+      <div class="grow"></div>
+      <div class="hero"><span class="v">1</span> <span class="u">µg/m³</span><br>
+        <span class="pill" style="background:rgba(52,168,83,.18);color:#34a853">● Good</span></div>
+      <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <path d="M0 26 L20 24 L40 27 L60 22 L80 24 L100 18 L120 21 L140 15 L160 18 L180 14 L200 16 L200 34 L0 34 Z" fill="rgba(52,168,83,.16)"/>
+        <path d="M0 26 L20 24 L40 27 L60 22 L80 24 L100 18 L120 21 L140 15 L160 18 L180 14 L200 16" fill="none" stroke="#34a853" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(255,171,64,.2)">🌡️</div><div><div class="tname">Baby Room</div><div class="tsub">Now</div></div></div>
+      <div class="grow"></div>
+      <div class="hero"><span class="v">25°</span><br>
+        <span class="pill" style="background:rgba(255,255,255,.1);color:#9aa3b2">💧 68%</span></div>
+      <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <path d="M0 20 L25 22 L50 25 L75 27 L100 24 L125 18 L150 12 L175 10 L200 13 L200 34 L0 34 Z" fill="rgba(232,121,74,.16)"/>
+        <path d="M0 20 L25 22 L50 25 L75 27 L100 24 L125 18 L150 12 L175 10 L200 13" fill="none" stroke="#e8794a" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="tile" style="grid-column: span 1;">
+      <div class="thead"><div class="ticon" style="background:rgba(178,134,255,.2)">🪟</div><div><div class="tname">Curtain</div><div class="tsub">30% open</div></div></div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:30%;background:linear-gradient(90deg,#b39aff,#8e79e6)"></div><span style="color:#fff">30%</span></div>
+    </div>
+    <div class="tile" style="grid-column: span 1;">
+      <div class="thead"><div class="ticon" style="background:rgba(122,197,255,.18)">💨</div><div><div class="tname">Purifier</div><div class="tsub">Auto</div></div></div>
+      <div class="grow"></div>
+      <div class="seg"><div>Manual</div><div class="sel">✓ Auto</div></div>
+    </div>
+
+    <!-- row 3 -->
+    <div class="tile on" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">💡</div><div><div class="tname">Baby Main Light</div><div class="tsub">Moonlight</div></div></div>
+      <div class="dots">
+        <div class="moonpill" style="outline:2px solid #c9c2ff">🌙</div>
+        <div class="grow"></div>
+        <div class="d" style="background:#bcd9ff"></div><div class="d" style="background:#eff2f7"></div>
+        <div class="d" style="background:#ffe9c0"></div><div class="d" style="background:#ffb84d"></div>
+      </div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:5%"></div><span style="color:#9aa3b2;left:24px">5%</span></div>
+    </div>
+    <div class="tile cam" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">📹</div><div><div class="tname">Doorbell</div><div class="tsub" style="color:#d6dae0">Opens on ring</div></div></div>
+      <div class="badge">just now</div>
+    </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(255,214,121,.18)">⚡</div><div><div class="tname">Energy today</div><div class="tsub">Kitchen + Living plugs</div></div></div>
+      <div class="grow"></div>
+      <div class="hero"><span class="v">1.4</span> <span class="u">kWh · 72 W now</span></div>
+      <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <path d="M0 30 L20 30 L30 12 L45 28 L70 29 L90 8 L110 26 L140 27 L160 18 L180 24 L200 22 L200 34 L0 34 Z" fill="rgba(255,212,121,.15)"/>
+        <path d="M0 30 L20 30 L30 12 L45 28 L70 29 L90 8 L110 26 L140 27 L160 18 L180 24 L200 22" fill="none" stroke="#ffd479" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="caption">Light — same layout, day theme</div>
+
+<section class="board light">
+  <div class="hdr">
+    <div class="greet">
+      <div class="big">Good morning</div>
+      <div class="sum">Sunday, July 5 · <b>24.0°</b> inside · <b>145 W</b> · <b>1 light</b> on</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="wx">
+      <div style="font-size:26px">☀️</div>
+      <div><div class="now">29°</div><div class="cond">Clear · feels 32°<br>↑31° ↓25° · 💧58%</div></div>
+      <div class="hours">
+        <div>10<b>29°</b></div><div>11<b>30°</b></div><div>12<b>31°</b></div>
+        <div>13<b>31°</b></div><div>14<b>31°</b></div><div>15<b>30°</b></div>
+      </div>
+    </div>
+    <div class="statchip"><span class="dot" style="background:#34a853"></span> Air Good</div>
+    <div class="gear">⚙️</div>
+  </div>
+
+  <div class="chips">
+    <div class="chip sel">All</div>
+    <div class="chip">Living Room</div>
+    <div class="chip">Bedroom</div>
+    <div class="chip">Baby Room</div>
+    <div class="chip">Whole home</div>
+    <div class="divider"></div>
+    <div class="scene">☀️ Morning</div>
+    <div class="scene">🧹 Clean air</div>
+    <div class="scene">🚪 Away</div>
+    <div class="spacer"></div>
+    <div class="chip">✦ Edit</div>
+  </div>
+
+  <div class="grid">
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">💡</div><div><div class="tname">Living Room Main Light</div><div class="tsub">Off</div></div></div>
+      <div class="dots">
+        <div class="moonpill" style="background:rgba(20,30,60,.08)">🌙</div>
+        <div class="grow"></div>
+        <div class="d" style="background:#bcd9ff"></div><div class="d" style="background:#eff2f7;outline:1px solid rgba(0,0,0,.08)"></div>
+        <div class="d sel" style="background:#ffe9c0"></div><div class="d" style="background:#ffb84d"></div>
+      </div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:0%"></div><span style="color:#66707f">0%</span></div>
+    </div>
+    <div class="tile on" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">💡</div><div><div class="tname">Kitchen Light</div><div class="tsub">On · 59 W</div></div></div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:80%"></div><span>80%</span></div>
+    </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(70,140,255,.14)">❄️</div><div><div class="tname">מזגן AC</div><div class="tsub">Cooling · 25°C ▾</div></div></div>
+      <div class="seg"><div class="sel">✓ Low</div><div>Medium</div><div>High</div></div>
+      <div class="grow"></div>
+      <div style="display:flex;align-items:center;justify-content:space-around">
+        <div class="ticon">−</div><div style="font-size:34px;font-weight:650">25°</div><div class="ticon">＋</div>
+      </div>
+    </div>
+
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(52,168,83,.16)">🌡️</div><div><div class="tname">Air Quality</div><div class="tsub">Mi Air Purifier</div></div></div>
+      <div class="grow"></div>
+      <div class="hero"><span class="v">2</span> <span class="u">µg/m³</span><br>
+        <span class="pill" style="background:rgba(52,168,83,.14);color:#238443">● Good</span></div>
+      <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <path d="M0 24 L25 26 L50 22 L75 25 L100 20 L125 22 L150 16 L175 19 L200 15 L200 34 L0 34 Z" fill="rgba(52,168,83,.14)"/>
+        <path d="M0 24 L25 26 L50 22 L75 25 L100 20 L125 22 L150 16 L175 19 L200 15" fill="none" stroke="#2f9e4f" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(255,150,60,.16)">🌡️</div><div><div class="tname">Baby Room</div><div class="tsub">Now</div></div></div>
+      <div class="grow"></div>
+      <div class="hero"><span class="v">24°</span><br>
+        <span class="pill" style="background:rgba(20,30,60,.06);color:#66707f">💧 62%</span></div>
+      <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <path d="M0 14 L25 16 L50 20 L75 24 L100 26 L125 24 L150 20 L175 16 L200 15 L200 34 L0 34 Z" fill="rgba(232,121,74,.14)"/>
+        <path d="M0 14 L25 16 L50 20 L75 24 L100 26 L125 24 L150 20 L175 16 L200 15" fill="none" stroke="#d96b3f" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="tile" style="grid-column: span 1;">
+      <div class="thead"><div class="ticon" style="background:rgba(140,110,255,.14)">🪟</div><div><div class="tname">Curtain</div><div class="tsub">70% open</div></div></div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:70%;background:linear-gradient(90deg,#a48cf5,#8e79e6)"></div><span style="color:#fff">70%</span></div>
+    </div>
+    <div class="tile" style="grid-column: span 1;">
+      <div class="thead"><div class="ticon" style="background:rgba(70,140,255,.14)">💨</div><div><div class="tname">Purifier</div><div class="tsub">Auto</div></div></div>
+      <div class="grow"></div>
+      <div class="seg"><div>Manual</div><div class="sel">✓ Auto</div></div>
+    </div>
+
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">💡</div><div><div class="tname">Baby Main Light</div><div class="tsub">Off</div></div></div>
+      <div class="dots">
+        <div class="moonpill" style="background:rgba(20,30,60,.08)">🌙</div>
+        <div class="grow"></div>
+        <div class="d" style="background:#bcd9ff"></div><div class="d" style="background:#eff2f7;outline:1px solid rgba(0,0,0,.08)"></div>
+        <div class="d" style="background:#ffe9c0"></div><div class="d" style="background:#ffb84d"></div>
+      </div>
+      <div class="grow"></div>
+      <div class="lvl"><div class="fill" style="width:0%"></div><span style="color:#66707f">0%</span></div>
+    </div>
+    <div class="tile cam" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon">📹</div><div><div class="tname">Doorbell</div><div class="tsub" style="color:#d6dae0">Opens on ring</div></div></div>
+      <div class="badge">2 min ago</div>
+    </div>
+    <div class="tile" style="grid-column: span 2;">
+      <div class="thead"><div class="ticon" style="background:rgba(230,160,30,.14)">⚡</div><div><div class="tname">Energy today</div><div class="tsub">Kitchen + Living plugs</div></div></div>
+      <div class="grow"></div>
+      <div class="hero"><span class="v">0.6</span> <span class="u">kWh · 145 W now</span></div>
+      <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <path d="M0 30 L30 29 L45 14 L60 27 L90 28 L110 10 L130 25 L160 26 L180 20 L200 23 L200 34 L0 34 Z" fill="rgba(230,160,30,.14)"/>
+        <path d="M0 30 L30 29 L45 14 L60 27 L90 28 L110 10 L130 25 L160 26 L180 20 L200 23" fill="none" stroke="#d9940f" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
