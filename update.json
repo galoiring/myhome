@@ -1,6 +1,6 @@
 {
-  "versionCode": 8,
-  "versionName": "1.0.2",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.0.2/app-release.apk",
-  "notes": "Curtain and Air Purifier are half-height again, but now their controls size themselves to fit exactly (no more inside-scrolling)."
+  "versionCode": 19,
+  "versionName": "1.1.0",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.0/app-release.apk",
+  "notes": "Moonlight button on the baby/bedroom light tiles, 24h trend sparklines on the Air Quality and Baby Room sensor tiles."
 }
