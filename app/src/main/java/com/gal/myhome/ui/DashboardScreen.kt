@@ -511,7 +511,10 @@ private fun HourCell(h: HourForecast) {
 
 /* ---------- room-grouped, no-scroll grid ---------- */
 
-private class RoomRow(val label: String?, val tiles: List<TileUi>)
+// bigSingleRoom: a room with 3+ tiles that owns its row — its packing stays
+// as-authored (no vertical pairing of full tiles), unlike merged small-room
+// rows where lone tiles are allowed to stack two-high to fill the space
+private class RoomRow(val label: String?, val tiles: List<TileUi>, val bigSingleRoom: Boolean = false)
 
 // consecutive same-room runs (the tile list is already room-priority sorted);
 // small rooms (<=2 tiles) are merged onto a shared row instead of getting a
@@ -548,7 +551,7 @@ private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
         when {
             run.items.size >= 3 -> {
                 flush()
-                rows.add(RoomRow(labelableRoom?.label, run.items))
+                rows.add(RoomRow(labelableRoom?.label, run.items, bigSingleRoom = true))
             }
             // unassigned devices never share a row with a named room, so a
             // curated room's row stays exactly that room (or merged rooms)
@@ -573,13 +576,20 @@ private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
 // just renders at Normal height instead of leaving dead empty space below it
 private class PackedColumn(val widthUnits: Int, val tiles: List<TileUi>)
 
-private fun packRow(tiles: List<TileUi>): List<PackedColumn> {
+private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): List<PackedColumn> {
     val cols = mutableListOf<PackedColumn>()
     var i = 0
     while (i < tiles.size) {
         val t = tiles[i]
         val next = tiles.getOrNull(i + 1)
-        if (t.height == TileHeight.HALF && next?.height == TileHeight.HALF && next.width == t.width) {
+        // pair two same-width tiles into one two-high column: always for
+        // Half+Half, and — in merged small-room rows — also for Normal+Normal,
+        // so two lone medium tiles (e.g. a bedroom + baby light) sit one above
+        // the other instead of each stretching across a near-empty row
+        val bothHalf = t.height == TileHeight.HALF && next?.height == TileHeight.HALF
+        val bothNormal = allowNormalStack &&
+            t.height == TileHeight.NORMAL && next?.height == TileHeight.NORMAL
+        if (next != null && next.width == t.width && (bothHalf || bothNormal)) {
             cols.add(PackedColumn(t.width.units, listOf(t, next)))
             i += 2
         } else {
@@ -610,8 +620,29 @@ fun RoomGroupedGrid(
             }
             return@BoxWithConstraints
         }
-        val rows = groupIntoRows(tiles)
-        val packedRows = rows.map { it.label to packRow(it.tiles) }
+        val rawRows = groupIntoRows(tiles)
+        // coalesce a sparse trailing row (≤2 tiles) up into the row before it
+        // when the combined width still fits — so a single leftover tile never
+        // claims its own full-height, stretched, mostly-empty line. The merged
+        // row then packs with vertical stacking enabled (see packRow)
+        val maxRowUnits = 11
+        val rows = mutableListOf<RoomRow>()
+        for (r in rawRows) {
+            val prev = rows.lastOrNull()
+            val prevUnits = prev?.tiles?.sumOf { it.width.units } ?: 0
+            val rUnits = r.tiles.sumOf { it.width.units }
+            if (prev != null && !prev.bigSingleRoom && r.tiles.size <= 2 &&
+                prevUnits + rUnits <= maxRowUnits
+            ) {
+                val label = listOfNotNull(prev.label, r.label)
+                    .flatMap { it.split(" · ") }.distinct().joinToString(" · ")
+                    .ifEmpty { null }
+                rows[rows.size - 1] = RoomRow(label, prev.tiles + r.tiles)
+            } else {
+                rows.add(r)
+            }
+        }
+        val packedRows = rows.map { it.label to packRow(it.tiles, allowNormalStack = !it.bigSingleRoom) }
         // a shared baseline unit width, sized so the most-constrained row
         // exactly fills the available width. Gaps must be counted per UNIT
         // boundary (totalUnits - 1), not per column: a Medium tile's width is
