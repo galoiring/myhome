@@ -755,6 +755,16 @@ fun TileCard(
         // finger, tap still toggles; inner controls consume their own touches
         var dimDrag by remember(tile.key) { mutableStateOf<Float?>(null) }
         val dimmer = tile.dimmer
+        val commitDim: (Float) -> Unit = { v ->
+            if (prefs.hapticFeedback) {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+            // setting brightness on an off light also turns it on
+            if (!tile.isOn) vm.toggleTile(tile)
+            val yl = dimmer?.yl
+            if (yl != null) vm.setYeelight(yl, v.roundToInt())
+            else dimmer?.let { vm.sendChars(it.targets, v.roundToInt()) }
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -770,15 +780,7 @@ fun TileCard(
                                     .coerceIn(1f, 100f)
                             },
                             onDragEnd = {
-                                dimDrag?.let { v ->
-                                    if (prefs.hapticFeedback) {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    }
-                                    // setting brightness on an off light also turns it on
-                                    if (!tile.isOn) vm.toggleTile(tile)
-                                    if (dimmer.yl != null) vm.setYeelight(dimmer.yl, v.roundToInt())
-                                    else vm.sendChars(dimmer.targets, v.roundToInt())
-                                }
+                                dimDrag?.let(commitDim)
                                 dimDrag = null
                             },
                             onDragCancel = { dimDrag = null },
@@ -786,7 +788,8 @@ fun TileCard(
                     }
                 )
         ) {
-        // brightness fill — doubles as the tile's level indicator at a glance
+        // brightness fill — the tile's level at a glance; soft trailing edge
+        // so a mid-level fill doesn't slice a tall tile with a hard line
         if (dimmer != null) {
             val frac by animateFloatAsState(
                 if (tile.isOn || dimDrag != null) {
@@ -795,11 +798,16 @@ fun TileCard(
                 label = "dimFill",
             )
             if (frac > 0.01f) {
+                val fillColor = tint.iconCircle.copy(alpha = if (dark) 0.28f else 0.30f)
                 Box(
                     Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(frac)
-                        .background(tint.iconCircle.copy(alpha = if (dark) 0.28f else 0.30f))
+                        .background(
+                            Brush.horizontalGradient(
+                                0f to fillColor, 0.82f to fillColor, 1f to Color.Transparent,
+                            )
+                        )
                 )
             }
         }
@@ -953,12 +961,12 @@ fun TileCard(
                 val soloStepper = tile.controls.count { it is StepCtl } == 1
                 val dimControls = tile.canToggle && !tile.isOn
                 // a handful of simple controls (Curtain's one visual, the
-                // purifier's speed+mode, the AC's fan+setpoint) get
-                // equal-share weighted heights so they fill the tile exactly —
-                // no dead space and no scrolling in Half height — with sensor
-                // readings on a natural-height bottom row. Chip-bearing tiles
-                // keep the scrollable fallback since capping would clip them
-                val flexible = tile.controls.size <= 3 && tile.chips.isEmpty()
+                // purifier's speed+mode, the AC's fan+setpoint, a light's
+                // warmth row) get equal-share weighted heights so they fill
+                // the tile exactly — no dead space and no scrolling in Half
+                // height — with sensors and a chip or two on natural-height
+                // bottom rows. Richer tiles keep the scrollable fallback
+                val flexible = tile.controls.size <= 3 && tile.chips.size <= 2
                 if (flexible) {
                     Column(
                         Modifier
@@ -976,6 +984,7 @@ fun TileCard(
                             }
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
+                        if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
                     }
                 } else {
                     Column(
@@ -993,6 +1002,19 @@ fun TileCard(
                         if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
                     }
                 }
+            }
+            if (dimmer != null) {
+                BrightnessBar(
+                    level = dimDrag ?: dimmer.value,
+                    tint = tint,
+                    subColor = subColor,
+                    onPreview = { dimDrag = it },
+                    onEnd = {
+                        dimDrag?.let(commitDim)
+                        dimDrag = null
+                    },
+                    onSet = commitDim,
+                )
             }
         }
         // live % readout while dimming
@@ -1119,6 +1141,74 @@ private fun ControlView(
     }
 }
 
+/* slim always-visible level bar at the foot of a dimmable tile: makes the
+   current brightness unambiguous (the card fill alone reads as "just a
+   tinted tile" at 100%) and doubles as a precise drag/tap target */
+@Composable
+private fun BrightnessBar(
+    level: Float,
+    tint: TintSet,
+    subColor: Color,
+    onPreview: (Float) -> Unit,
+    onEnd: () -> Unit,
+    onSet: (Float) -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .height(26.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(subColor.copy(alpha = 0.16f))
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { off ->
+                        onPreview((off.x / size.width * 100f).coerceIn(1f, 100f))
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        onPreview((change.position.x / size.width * 100f).coerceIn(1f, 100f))
+                    },
+                    onDragEnd = { onEnd() },
+                    onDragCancel = { onEnd() },
+                )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { off ->
+                    onSet((off.x / size.width * 100f).coerceIn(1f, 100f))
+                }
+            },
+    ) {
+        val frac = (level / 100f).coerceIn(0f, 1f)
+        if (frac > 0.02f) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(frac)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(tint.iconCircle)
+            ) {
+                // grab handle at the fill's leading edge
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 5.dp)
+                        .width(4.dp)
+                        .fillMaxHeight(0.55f)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.9f))
+                )
+            }
+        }
+        Text(
+            "${level.roundToInt()}%",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (frac > 0.18f) tint.iconTint else subColor,
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp),
+        )
+    }
+}
+
 /* warmth as four fixed color-temperature stops — presets beat a fiddly
    slider on a wall panel. min..max maps cool..warm on both HomeKit (mireds)
    and Yeelight (0-100 warmth) scales, so fractions work for either. */
@@ -1139,6 +1229,12 @@ private fun WarmthDots(ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, s
         )
         Spacer(Modifier.weight(1f))
         Row(
+            // swallow horizontal drags so a brightness drag wandering over
+            // (or starting on) the dots can't fire a preset by mistake —
+            // the dots only respond to a clean tap
+            modifier = Modifier.pointerInput(Unit) {
+                detectHorizontalDragGestures(onHorizontalDrag = { _, _ -> })
+            },
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
