@@ -613,10 +613,14 @@ fun RoomGroupedGrid(
         val rows = groupIntoRows(tiles)
         val packedRows = rows.map { it.label to packRow(it.tiles) }
         // a shared baseline unit width, sized so the most-constrained row
-        // exactly fills the available width
+        // exactly fills the available width. Gaps must be counted per UNIT
+        // boundary (totalUnits - 1), not per column: a Medium tile's width is
+        // defined as two units plus the gap between them, so dividing by
+        // column gaps only made every multi-unit row overflow the right edge
+        // by one gap per extra unit — clipping the rightmost tile's content
         val minUnitWidth = packedRows.minOf { (_, cols) ->
             val totalUnits = cols.sumOf { it.widthUnits }
-            (maxWidth - gap * (cols.size - 1)) / totalUnits
+            (maxWidth - gap * (totalUnits - 1)) / totalUnits
         }
         // a sparse row may stretch a bit past the shared baseline (capped) so
         // it doesn't look like a mostly-empty row, but never all the way to
@@ -627,7 +631,7 @@ fun RoomGroupedGrid(
         // BoxWithConstraints receiver.)
         val rowUnitWidths = packedRows.map { (_, cols) ->
             val totalUnits = cols.sumOf { it.widthUnits }
-            val naturalWidth = (maxWidth - gap * (cols.size - 1)) / totalUnits
+            val naturalWidth = (maxWidth - gap * (totalUnits - 1)) / totalUnits
             minOf(naturalWidth, minUnitWidth * 1.3f)
         }
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -1581,7 +1585,12 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                 color = onColor,
             )
             Spacer(Modifier.weight(1f))
-            Text("drag to move", style = MaterialTheme.typography.labelSmall, color = subColor)
+            Text(
+                "drag to move",
+                style = MaterialTheme.typography.labelSmall,
+                color = subColor,
+                maxLines = 1,
+            )
         }
         val fabricColors = listOf(
             Color(0xFFB79CFF).copy(alpha = 0.55f),
