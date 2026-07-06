@@ -886,6 +886,31 @@ fun TileCard(
         if (tinted) {
             Box(Modifier.fillMaxSize().background(glowBrush))
         }
+        // a short sensor tile (Half height) has no room for the dedicated
+        // trend slot the tall branch gets — anchor the 24h sparkline to the
+        // tile floor instead, behind the hero reading
+        if (tile.kind == TileKind.SENSOR && tile.controls.isEmpty() && tileMaxHeight < 190.dp) {
+            val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
+            val pm25 = tile.sensors.firstOrNull { it.kind == SensorKind.PM25 }
+            val suffix = if (temp != null) "temp" else if (pm25 != null) "pm25" else null
+            val series = suffix?.let { sfx ->
+                tile.origNames.firstNotNullOfOrNull { vm.histories["$it|$sfx"] }
+            }
+            val dayAgo = System.currentTimeMillis() - 24 * 3600 * 1000L
+            val pts = series?.filter { it.first >= dayAgo }.orEmpty()
+            if (pts.size >= 2) {
+                val trendColor = pm25?.value?.toDoubleOrNull()?.let { pm25Status(it).second }
+                    ?: nameColor
+                Sparkline(
+                    pts,
+                    color = trendColor.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(tileMaxHeight * 0.36f),
+                )
+            }
+        }
 
         val hasBody =
             tile.controls.isNotEmpty() || tile.chips.isNotEmpty() || tile.sensors.isNotEmpty()

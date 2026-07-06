@@ -1,6 +1,6 @@
 {
-  "versionCode": 21,
-  "versionName": "1.1.2",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.2/app-release.apk",
-  "notes": "Removed the duplicate brightness slider (ambient color ring) on multi-light Yeelight ceiling tiles."
+  "versionCode": 22,
+  "versionName": "1.2.0",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.2.0/app-release.apk",
+  "notes": "Air Quality tile shows a 24h trend graph. History popup redesigned: labeled Y axis, real clock times, touch scrubbing to read exact values, and 24h/48h/7d ranges."
 }
