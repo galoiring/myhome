@@ -1,6 +1,6 @@
 {
   "versionCode": 22,
-  "versionName": "1.2.0",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.2.0/app-release.apk",
+  "versionName": "1.1.3",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.3/app-release.apk",
   "notes": "Air Quality tile shows a 24h trend graph. History popup redesigned: labeled Y axis, real clock times, touch scrubbing to read exact values, and 24h/48h/7d ranges."
 }
