@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -931,13 +932,12 @@ fun TileCard(
                 val pm25 = tile.sensors.firstOrNull { it.kind == SensorKind.PM25 }
                 val humidity = tile.sensors.firstOrNull { it.kind == SensorKind.HUMIDITY }
                 val pmStatus = pm25?.value?.toDoubleOrNull()?.let { pm25Status(it) }
-                val tempVal = temp?.value?.toDoubleOrNull()
+                val tempBand = temp?.value?.toDoubleOrNull()?.let { tempStatus(it) }
                 // status-colored icon circle: AQ tiles follow the PM2.5 band,
-                // temp tiles get a cool/warm accent at the extremes
+                // temp tiles the nursery comfort band
                 val (accentCircle, accentIcon) = when {
                     pmStatus != null -> pmStatus.second to Color.White
-                    tempVal != null && tempVal <= 18 -> CoolTint.iconCircle to CoolTint.iconTint
-                    tempVal != null && tempVal >= 26 -> AmberTint.iconCircle to AmberTint.iconTint
+                    tempBand != null -> tempBand.second to Color.White
                     else -> null to null
                 }
                 TileHead(
@@ -960,7 +960,9 @@ fun TileCard(
                             "${temp.value}°",
                             style = heroStyle,
                             fontWeight = FontWeight.Medium,
-                            color = nameColor,
+                            // neutral while comfy; the number itself turns
+                            // amber/red when the room drifts out of band
+                            color = tempBand?.second?.takeIf { it != BandGreen } ?: nameColor,
                         )
                     } else if (pm25 != null) {
                         Row {
@@ -979,47 +981,44 @@ fun TileCard(
                             )
                         }
                         pmStatus?.let { (label, color) ->
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = color.copy(alpha = 0.18f),
-                                modifier = Modifier.padding(top = 6.dp),
-                            ) {
-                                Row(
-                                    Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-                                    Text(
-                                        label,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = color,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                }
-                            }
+                            StatusPill(label, color, Modifier.padding(top = 6.dp))
                         }
                     }
-                    // humidity rides under the temp hero as a compact pill
+                    // comfort-band pill + humidity ride under the temp hero
                     val humidityPill = humidity.takeIf { temp != null }
-                    if (humidityPill != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = subColor.copy(alpha = 0.14f),
-                            modifier = Modifier.padding(top = 6.dp),
+                    if (tempBand != null || humidityPill != null) {
+                        Row(
+                            Modifier.padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Row(
-                                Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Icon(Icons.Rounded.WaterDrop, null, Modifier.size(14.dp), tint = subColor)
-                                Text(
-                                    "${humidityPill.value}${humidityPill.unit}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = nameColor,
-                                    fontWeight = FontWeight.Medium,
-                                )
+                            tempBand?.let { (label, color) -> StatusPill(label, color) }
+                            if (humidityPill != null) {
+                                val hColor = humidityPill.value.toDoubleOrNull()
+                                    ?.let { humidityStatus(it) }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = hColor?.copy(alpha = 0.18f)
+                                        ?: subColor.copy(alpha = 0.14f),
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.WaterDrop, null,
+                                            Modifier.size(14.dp),
+                                            tint = hColor ?: subColor,
+                                        )
+                                        Text(
+                                            "${humidityPill.value}${humidityPill.unit}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = hColor ?: nameColor,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1187,6 +1186,66 @@ private fun DoorbellTileBody(tile: TileUi, vm: DashboardViewModel, nameColor: Co
     }
 
     val bmp = snap
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    // compact form for the shrunken default size (Small + Half): thumbnail
+    // or icon beside the name/age instead of a full-bleed stale frame
+    if (maxHeight < 190.dp) {
+        val narrow = maxWidth < 150.dp
+        // hoisted: BoxWithConstraintsScope isn't reachable from inside Row's
+        // DslMarker-scoped content
+        val thumbH = (maxHeight - 24.dp).coerceAtMost(64.dp)
+        Row(
+            Modifier.fillMaxSize().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (narrow || bmp == null) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            tileIcon(tile.kind), null,
+                            Modifier.size(21.dp),
+                            tint = subColor.copy(alpha = .8f),
+                        )
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.height(thumbH).aspectRatio(16f / 10f),
+                ) {
+                    Image(
+                        bmp.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    tile.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = nameColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    ageText.ifEmpty { "Tap to peek" },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = subColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        return@BoxWithConstraints
+    }
     if (bmp == null) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             TileHead(tile, nameColor, subColor, big = false)
@@ -1201,7 +1260,7 @@ private fun DoorbellTileBody(tile: TileUi, vm: DashboardViewModel, nameColor: Co
                 )
             }
         }
-        return
+        return@BoxWithConstraints
     }
     Box(Modifier.fillMaxSize()) {
         Image(
@@ -1247,6 +1306,7 @@ private fun DoorbellTileBody(tile: TileUi, vm: DashboardViewModel, nameColor: Co
                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
             )
         }
+    }
     }
 }
 
@@ -1951,6 +2011,45 @@ private fun pm25Status(v: Double): Pair<String, Color> = when {
     v <= 12 -> "Good" to Color(0xFF34A853)
     v <= 35 -> "Moderate" to Color(0xFFF29900)
     else -> "Poor" to Color(0xFFD93025)
+}
+
+private val BandGreen = Color(0xFF34A853)
+
+// nursery comfort bands (18–22 °C is the recommended sleep range for a
+// baby's room), same palette as the PM2.5 bands
+private fun tempStatus(v: Double): Pair<String, Color> = when {
+    v < 16 -> "Cold" to Color(0xFFD93025)
+    v < 18 -> "Cool" to Color(0xFFF29900)
+    v <= 22 -> "Comfy" to BandGreen
+    v <= 26 -> "Warm" to Color(0xFFF29900)
+    else -> "Hot" to Color(0xFFD93025)
+}
+
+// 40–60 % is the comfortable-nursery band; dry winter air reads amber/red
+private fun humidityStatus(v: Double): Color = when {
+    v in 40.0..60.0 -> BandGreen
+    v in 30.0..70.0 -> Color(0xFFF29900)
+    else -> Color(0xFFD93025)
+}
+
+// dot + label pill used for sensor status bands (AQ, nursery temp)
+@Composable
+private fun StatusPill(label: String, color: Color, modifier: Modifier = Modifier) {
+    Surface(shape = RoundedCornerShape(50), color = color.copy(alpha = 0.18f), modifier = modifier) {
+        Row(
+            Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = color,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

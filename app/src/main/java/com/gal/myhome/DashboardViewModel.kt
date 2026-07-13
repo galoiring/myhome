@@ -21,6 +21,7 @@ import com.gal.myhome.data.ShellyDevice
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
+import com.gal.myhome.data.TileSizeCfg
 import com.gal.myhome.data.TileWidth
 import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.Svc
@@ -624,7 +625,13 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val tagged = split.map {
-            val size = p.sizeFor(it.key)
+            // a doorbell tile only ever shows a stale cached frame, so it
+            // defaults compact instead of claiming a full cell; an explicit
+            // size set in Settings still wins (key can't go in DEFAULT_SIZES —
+            // it embeds the user-chosen camera name)
+            val size = if (it.camera?.doorbell == true && it.key !in p.tileSizes)
+                TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)
+            else p.sizeFor(it.key)
             it.copy(room = p.roomFor(it.key), width = size.width, height = size.height)
         }
         // an explicit user reorder always wins; new tiles not yet placed sort to the end

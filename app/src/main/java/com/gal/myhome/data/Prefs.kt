@@ -59,10 +59,11 @@ private val DEFAULT_SIZES = mapOf(
     "s:192.168.68.77:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-    // sensor tiles are pure readouts — compact by default so a future
-    // camera tile has room on their rows
+    // sensor tiles are pure readouts — compact by default…
     "a:Mi Air Purifier:aq" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
-    "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+    // …except the nursery sensor: with a newborn it's the single most-glanced
+    // tile on the wall, so it gets hero width
+    "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
 )
 
 data class YeelightCfg(val ip: String, val name: String)
