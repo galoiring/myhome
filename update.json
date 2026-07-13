@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "versionName": "1.1.4",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.4/app-release.apk",
-  "notes": "Baby room hero tile: bigger by default, comfort-band colors (18-22°C, 40-60% humidity) with a status pill. Doorbell tile shrinks to a compact card showing a small thumbnail and last-seen age."
+  "versionCode": 24,
+  "versionName": "1.1.5",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.5/app-release.apk",
+  "notes": "Doorbell tile now really shrinks (compact half tile, even without a stacking neighbor). Baby Room defaults to a large hero tile with a bigger temperature reading. Sensor history popup grows out of the tapped tile with a spring animation."
 }

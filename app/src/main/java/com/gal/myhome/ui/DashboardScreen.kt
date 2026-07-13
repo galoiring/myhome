@@ -102,7 +102,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -254,7 +257,8 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
 
         val tiles = ui.tiles.filter { !it.hidden }
         var liveCam by remember { mutableStateOf<CameraCfg?>(null) }
-        var historyTile by remember { mutableStateOf<TileUi?>(null) }
+        // tile + its on-screen bounds, so the history popup can grow out of it
+        var historyTile by remember { mutableStateOf<Pair<TileUi, Rect?>?>(null) }
 
         // doorbell press (relayed by the server) pops the live view once per
         // ring; closing it early doesn't reopen for the same press
@@ -288,7 +292,7 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                 TileCard(
                     t, vm,
                     onOpenCamera = { liveCam = it },
-                    onOpenHistory = { historyTile = it },
+                    onOpenHistory = { tile, bounds -> historyTile = tile to bounds },
                 )
             }
         }
@@ -301,8 +305,8 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                 CameraLiveView(name = cam.name, url = cam.url, onClose = { liveCam = null })
             }
         }
-        historyTile?.let { t ->
-            HistorySheet(t, vm, onClose = { historyTile = null })
+        historyTile?.let { (t, bounds) ->
+            HistorySheet(t, vm, origin = bounds, onClose = { historyTile = null })
         }
     }
 }
@@ -578,7 +582,8 @@ private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
 
 // a column is one Normal-height tile, or two Half-height tiles of the same
 // width stacked together; a lone Half-height tile (no matching neighbor)
-// just renders at Normal height instead of leaving dead empty space below it
+// renders in the top half of its column so "shrink this tile" still works
+// without a stacking partner (the doorbell is usually that tile)
 private class PackedColumn(val widthUnits: Int, val tiles: List<TileUi>)
 
 private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): List<PackedColumn> {
@@ -703,6 +708,14 @@ fun RoomGroupedGrid(
                                         Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[0]) }
                                         Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[1]) }
                                     }
+                                } else if (col.tiles[0].height == TileHeight.HALF) {
+                                    Column(
+                                        Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(gap),
+                                    ) {
+                                        Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[0]) }
+                                        Spacer(Modifier.weight(1f))
+                                    }
                                 } else {
                                     tileContent(col.tiles[0])
                                 }
@@ -722,7 +735,7 @@ fun TileCard(
     tile: TileUi,
     vm: DashboardViewModel,
     onOpenCamera: (CameraCfg) -> Unit = {},
-    onOpenHistory: (TileUi) -> Unit = {},
+    onOpenHistory: (TileUi, Rect?) -> Unit = { _, _ -> },
 ) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
@@ -768,13 +781,15 @@ fun TileCard(
         Brush.radialGradient(listOf(tint.iconCircle.copy(alpha = if (dark) 0.30f else 0.22f), Color.Transparent))
     }
 
+    // where the card sits on screen — the history popup grows out of this rect
+    var cardBounds by remember { mutableStateOf<Rect?>(null) }
     // the whole card is the on/off button — inner controls consume their own touches
     Surface(
         onClick = {
             if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             when {
                 tile.camera != null -> onOpenCamera(tile.camera)
-                opensHistory -> onOpenHistory(tile)
+                opensHistory -> onOpenHistory(tile, cardBounds)
                 else -> vm.toggleTile(tile)
             }
         },
@@ -785,6 +800,7 @@ fun TileCard(
         border = BorderStroke(1.dp, borderColor),
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { cardBounds = it.boundsInWindow() }
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
         if (tile.kind == TileKind.CAMERA && tile.camera?.doorbell == true) {
@@ -951,10 +967,12 @@ fun TileCard(
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // a Small-width tile doesn't have room for the bigger scale
-                    val heroStyle = if (tile.width == TileWidth.SMALL)
-                        MaterialTheme.typography.displaySmall
-                    else MaterialTheme.typography.displayMedium
+                    // hero scale follows the tile's width
+                    val heroStyle = when (tile.width) {
+                        TileWidth.SMALL -> MaterialTheme.typography.displaySmall
+                        TileWidth.MEDIUM -> MaterialTheme.typography.displayMedium
+                        TileWidth.LARGE -> MaterialTheme.typography.displayLarge
+                    }
                     if (temp != null) {
                         Text(
                             "${temp.value}°",

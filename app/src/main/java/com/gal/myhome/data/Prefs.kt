@@ -66,6 +66,12 @@ private val DEFAULT_SIZES = mapOf(
     "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
 )
 
+// defaults that changed in v1.1.4 — installs that saved the old value keep
+// tracking the new default until the user picks something else
+private val STALE_SAVED_SIZES = mapOf(
+    "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+)
+
 data class YeelightCfg(val ip: String, val name: String)
 
 // doorbell mode: the tile never connects on its own (kind to a battery cam)
@@ -104,7 +110,13 @@ data class Prefs(
     val updateCheckUrl: String = "https://raw.githubusercontent.com/galoiring/myhome/main/update.json",
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
-    fun sizeFor(key: String): TileSizeCfg = tileSizes[key] ?: DEFAULT_SIZES[key] ?: TileSizeCfg()
+    fun sizeFor(key: String): TileSizeCfg {
+        // a saved size equal to the pre-v1.1.4 default is stale state, not a
+        // user choice — let the new default win; any other value is respected
+        val saved = tileSizes[key]
+        return if (saved != null && saved != STALE_SAVED_SIZES[key]) saved
+        else DEFAULT_SIZES[key] ?: TileSizeCfg()
+    }
 }
 
 private val Context.dataStore by preferencesDataStore(name = "prefs")

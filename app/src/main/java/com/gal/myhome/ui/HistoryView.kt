@@ -1,7 +1,7 @@
 package com.gal.myhome.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -44,6 +45,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -79,7 +82,12 @@ private val RANGES = listOf(24 to "24 h", 48 to "48 h", 168 to "7 d")
 /* history chart for a sensor tile — data comes from the Pi's 5-minute
  * samples, kept for 7 days */
 @Composable
-fun HistorySheet(tile: TileUi, vm: DashboardViewModel, onClose: () -> Unit) {
+fun HistorySheet(
+    tile: TileUi,
+    vm: DashboardViewModel,
+    origin: Rect? = null, // the tapped tile's window bounds — popup grows out of it
+    onClose: () -> Unit,
+) {
     var data by remember(tile.key) {
         mutableStateOf<Map<String, List<Pair<Long, Double>>>?>(null)
     }
@@ -96,27 +104,50 @@ fun HistorySheet(tile: TileUi, vm: DashboardViewModel, onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Dialog windows pop in with no transition of their own — animate the
-        // card in with a springy fade + scale + rise from the tapped tile
-        var shown by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { shown = true }
-        val appear by animateFloatAsState(
-            if (shown) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
-            label = "historyAppear",
-        )
+        // Dialog windows pop in with no transition of their own — container
+        // transform: once the card is measured, spring it from the tapped
+        // tile's rect (scaled + translated to cover it) to its resting place
+        var cardRect by remember { mutableStateOf<Rect?>(null) }
+        val appear = remember { Animatable(0f) }
+        LaunchedEffect(cardRect != null) {
+            if (cardRect != null) {
+                appear.animateTo(
+                    1f,
+                    spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                )
+            }
+        }
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             tonalElevation = 3.dp,
             modifier = Modifier
                 .width(620.dp)
+                .onGloballyPositioned { if (cardRect == null) cardRect = it.boundsInWindow() }
                 .graphicsLayer {
-                    // the spring overshoots past 1 for the pop — keep alpha legal
-                    alpha = appear.coerceIn(0f, 1f)
-                    scaleX = 0.9f + 0.1f * appear
-                    scaleY = 0.9f + 0.1f * appear
-                    translationY = (1f - appear) * 28.dp.toPx()
+                    val c = cardRect
+                    val p = appear.value
+                    if (c == null || c.width <= 0f || c.height <= 0f) {
+                        // not measured yet — stay invisible for the first frame
+                        alpha = 0f
+                        return@graphicsLayer
+                    }
+                    if (origin != null) {
+                        // both rects are window-space; the app is a fullscreen
+                        // panel, so tile window ≈ dialog window closely enough
+                        val inv = 1f - p // spring overshoot past 1 gives the pop
+                        scaleX = 1f + (origin.width / c.width - 1f) * inv
+                        scaleY = 1f + (origin.height / c.height - 1f) * inv
+                        translationX = (origin.center.x - c.center.x) * inv
+                        translationY = (origin.center.y - c.center.y) * inv
+                        // fade in fast so the growing card reads as solid
+                        alpha = (p * 3f).coerceIn(0f, 1f)
+                    } else {
+                        alpha = p.coerceIn(0f, 1f)
+                        scaleX = 0.9f + 0.1f * p
+                        scaleY = 0.9f + 0.1f * p
+                        translationY = (1f - p) * 28.dp.toPx()
+                    }
                 },
         ) {
             var rangeIdx by remember { mutableIntStateOf(0) }

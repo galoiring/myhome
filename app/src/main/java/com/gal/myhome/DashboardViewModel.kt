@@ -626,10 +626,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
         val tagged = split.map {
             // a doorbell tile only ever shows a stale cached frame, so it
-            // defaults compact instead of claiming a full cell; an explicit
-            // size set in Settings still wins (key can't go in DEFAULT_SIZES —
-            // it embeds the user-chosen camera name)
-            val size = if (it.camera?.doorbell == true && it.key !in p.tileSizes)
+            // defaults compact instead of claiming a full cell; a saved
+            // Medium/Normal is just the old default echoed back, so only a
+            // deliberately different size set in Settings wins (key can't go
+            // in DEFAULT_SIZES — it embeds the user-chosen camera name)
+            val saved = p.tileSizes[it.key]
+            val size = if (it.camera?.doorbell == true && (saved == null || saved == TileSizeCfg()))
                 TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)
             else p.sizeFor(it.key)
             it.copy(room = p.roomFor(it.key), width = size.width, height = size.height)
