@@ -625,16 +625,19 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val tagged = split.map {
-            // a doorbell tile only ever shows a stale cached frame, so it
-            // defaults compact instead of claiming a full cell; a saved
-            // Medium/Normal is just the old default echoed back, so only a
-            // deliberately different size set in Settings wins (key can't go
-            // in DEFAULT_SIZES — it embeds the user-chosen camera name)
+            // a doorbell tile only ever shows a cached frame, so it defaults
+            // to a small (but full-height, so no orphan half-cell) block; a
+            // saved Medium/Normal is just the old default echoed back, so only
+            // a deliberately different size set in Settings wins (key can't go
+            // in DEFAULT_SIZES — it embeds the user-chosen camera name). An
+            // unassigned camera joins the living-room row instead of sitting
+            // in a lonely trailing row
             val saved = p.tileSizes[it.key]
             val size = if (it.camera?.doorbell == true && (saved == null || saved == TileSizeCfg()))
-                TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)
+                TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL)
             else p.sizeFor(it.key)
-            it.copy(room = p.roomFor(it.key), width = size.width, height = size.height)
+            val room = p.roomFor(it.key) ?: if (it.camera != null) Room.LIVING else null
+            it.copy(room = room, width = size.width, height = size.height)
         }
         // an explicit user reorder always wins; new tiles not yet placed sort to the end
         if (p.tileOrder.isNotEmpty()) {
@@ -646,6 +649,8 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 t.isGroup -> -1
                 t.kind == TileKind.LIGHT -> 0
                 t.kind == TileKind.AC || t.kind == TileKind.PURIFIER -> 1
+                // camera right after the purifier group, per the wall layout
+                t.kind == TileKind.CAMERA -> 2
                 t.kind == TileKind.SWITCH || t.kind == TileKind.OUTLET -> 2
                 else -> 3
             }

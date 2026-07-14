@@ -1,6 +1,6 @@
 {
-  "versionCode": 25,
-  "versionName": "1.1.6",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.6/app-release.apk",
-  "notes": "Baby Room reliably gets its big hero tile (old saved Small sizes no longer pin it down). Short sensor tiles get a clean compact layout: humidity beside the temperature, nothing drawn over the trend graph."
+  "versionCode": 26,
+  "versionName": "1.1.7",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.7/app-release.apk",
+  "notes": "Doorbell is a small full-image block in the Living Room row next to the purifier — tapping it wakes the camera for a fresh snapshot shown right in the tile. History popup animation reworked: slower grow-from-tile with content fade-in, and it collapses back into the tile on close."
 }

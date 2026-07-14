@@ -1,8 +1,9 @@
 package com.gal.myhome.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -30,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.gal.myhome.DashboardViewModel
 import com.gal.myhome.TileUi
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -100,23 +103,38 @@ fun HistorySheet(
         }
     }
 
+    var requestDismiss by remember { mutableStateOf(false) }
     Dialog(
-        onDismissRequest = onClose,
+        onDismissRequest = { requestDismiss = true },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         // Dialog windows pop in with no transition of their own — container
         // transform: once the card is measured, spring it from the tapped
-        // tile's rect (scaled + translated to cover it) to its resting place
+        // tile's rect (scaled + translated to cover it) to its resting place,
+        // and collapse it back into the tile on the way out
         var cardRect by remember { mutableStateOf<Rect?>(null) }
         val appear = remember { Animatable(0f) }
         LaunchedEffect(cardRect != null) {
             if (cardRect != null) {
                 appear.animateTo(
                     1f,
-                    spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                    spring(dampingRatio = 0.8f, stiffness = 260f),
                 )
             }
         }
+        val scope = rememberCoroutineScope()
+        var closing by remember { mutableStateOf(false) }
+        val dismiss: () -> Unit = {
+            if (!closing) {
+                closing = true
+                scope.launch {
+                    appear.animateTo(0f, tween(240, easing = FastOutSlowInEasing))
+                    onClose()
+                }
+            }
+        }
+        // outside-tap / back arrive via onDismissRequest, outside this scope
+        LaunchedEffect(requestDismiss) { if (requestDismiss) dismiss() }
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -151,7 +169,15 @@ fun HistorySheet(
                 },
         ) {
             var rangeIdx by remember { mutableIntStateOf(0) }
-            Column(Modifier.padding(24.dp)) {
+            // content fades in a beat behind the container so the card reads
+            // as a surface growing out of the tile, then filling with detail
+            Column(
+                Modifier
+                    .padding(24.dp)
+                    .graphicsLayer {
+                        alpha = ((appear.value - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                    }
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         tile.name,
@@ -167,7 +193,7 @@ fun HistorySheet(
                             )
                         }
                     }
-                    IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "close") }
+                    IconButton(onClick = dismiss) { Icon(Icons.Rounded.Close, "close") }
                 }
                 val snapshot = data
                 when {

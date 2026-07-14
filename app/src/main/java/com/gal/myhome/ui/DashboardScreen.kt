@@ -13,7 +13,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -783,11 +782,14 @@ fun TileCard(
 
     // where the card sits on screen — the history popup grows out of this rect
     var cardBounds by remember { mutableStateOf<Rect?>(null) }
+    // doorbell taps grab a fresh frame shown inside the tile itself
+    var peekTick by remember(tile.key) { mutableStateOf(0) }
     // the whole card is the on/off button — inner controls consume their own touches
     Surface(
         onClick = {
             if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             when {
+                tile.camera?.doorbell == true -> peekTick++
                 tile.camera != null -> onOpenCamera(tile.camera)
                 opensHistory -> onOpenHistory(tile, cardBounds)
                 else -> vm.toggleTile(tile)
@@ -804,7 +806,7 @@ fun TileCard(
             .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
         if (tile.kind == TileKind.CAMERA && tile.camera?.doorbell == true) {
-            DoorbellTileBody(tile, vm, nameColor, subColor)
+            DoorbellTileBody(tile, vm, nameColor, subColor, peekTick)
             return@Surface
         }
         if (tile.kind == TileKind.CAMERA) {
@@ -1164,22 +1166,28 @@ fun TileCard(
     }
 }
 
-/* battery-friendly doorbell tile: shows the server's LAST cached frame (from
-   the most recent ring or peek) with its age — refreshing it never touches
-   the camera, so the Ring's battery only pays for actual rings and taps */
+/* battery-friendly doorbell tile: the cached frame (from the most recent
+   ring or peek) fills the whole card, with its age in a corner chip.
+   Tapping the tile wakes the camera for ONE fresh frame shown in place —
+   that tap and actual rings are the only things that cost Ring battery */
 @Composable
-private fun DoorbellTileBody(tile: TileUi, vm: DashboardViewModel, nameColor: Color, subColor: Color) {
+private fun DoorbellTileBody(
+    tile: TileUi, vm: DashboardViewModel, nameColor: Color, subColor: Color, peekTick: Int,
+) {
     var snap by remember(tile.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var snapTs by remember(tile.key) { mutableStateOf(0L) }
     var ageText by remember(tile.key) { mutableStateOf("") }
+    var fetching by remember(tile.key) { mutableStateOf(false) }
     // keyed on ringAt so a fresh ring re-pulls the new frame right away
     LaunchedEffect(tile.key, vm.ui.ringAt) {
         while (isActive) {
             try {
                 vm.cameraSnapshotCached(tile.camera!!.url)?.let { s ->
-                    android.graphics.BitmapFactory
-                        .decodeByteArray(s.bytes, 0, s.bytes.size)
-                        ?.let { snap = it; snapTs = s.ts }
+                    if (s.ts > snapTs) {
+                        android.graphics.BitmapFactory
+                            .decodeByteArray(s.bytes, 0, s.bytes.size)
+                            ?.let { snap = it; snapTs = s.ts }
+                    }
                 }
             } catch (_: Exception) { /* server briefly away; retry */ }
             if (snapTs > 0) {
@@ -1195,129 +1203,89 @@ private fun DoorbellTileBody(tile: TileUi, vm: DashboardViewModel, nameColor: Co
             delay(if (snap == null) 15_000 else 60_000)
         }
     }
+    // tap = one fresh frame from the camera, shown right here in the tile
+    LaunchedEffect(peekTick) {
+        if (peekTick == 0) return@LaunchedEffect
+        fetching = true
+        try {
+            val bytes = vm.cameraSnapshot(tile.camera!!.url)
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let {
+                snap = it
+                snapTs = System.currentTimeMillis()
+                ageText = "just now"
+            }
+        } catch (_: Exception) { /* camera asleep/offline — keep the old frame */ }
+        fetching = false
+    }
 
     val bmp = snap
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-    // compact form for the shrunken default size (Small + Half): thumbnail
-    // or icon beside the name/age instead of a full-bleed stale frame
-    if (maxHeight < 190.dp) {
-        val narrow = maxWidth < 150.dp
-        // hoisted: BoxWithConstraintsScope isn't reachable from inside Row's
-        // DslMarker-scoped content
-        val thumbH = (maxHeight - 24.dp).coerceAtMost(64.dp)
-        Row(
-            Modifier.fillMaxSize().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (narrow || bmp == null) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            tileIcon(tile.kind), null,
-                            Modifier.size(21.dp),
-                            tint = subColor.copy(alpha = .8f),
-                        )
-                    }
-                }
-            } else {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.height(thumbH).aspectRatio(16f / 10f),
-                ) {
-                    Image(
-                        bmp.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    tile.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = nameColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    ageText.ifEmpty { "Tap to peek" },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = subColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        return@BoxWithConstraints
-    }
-    if (bmp == null) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            TileHead(tile, nameColor, subColor, big = false)
+    Box(Modifier.fillMaxSize()) {
+        if (bmp != null) {
+            Image(
+                bmp.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // legibility scrim behind the header text
             Box(
-                Modifier.weight(1f).fillMaxWidth(),
-                contentAlignment = Alignment.Center,
-            ) {
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = .55f), Color.Transparent)
+                        )
+                    )
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Rounded.Videocam, null,
-                    Modifier.size(42.dp),
+                    Modifier.size(36.dp),
                     tint = subColor.copy(alpha = .55f),
                 )
             }
         }
-        return@BoxWithConstraints
-    }
-    Box(Modifier.fillMaxSize()) {
-        Image(
-            bmp.asImageBitmap(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        // legibility scrim behind the header text
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(58.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.Black.copy(alpha = .55f), Color.Transparent)
-                    )
-                )
-        )
         Row(
-            Modifier.align(Alignment.TopStart).padding(12.dp),
+            Modifier.align(Alignment.TopStart).padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Icon(tileIcon(tile.kind), null, Modifier.size(18.dp), tint = Color.White)
+            Icon(
+                tileIcon(tile.kind), null,
+                Modifier.size(16.dp),
+                tint = if (bmp != null) Color.White else subColor,
+            )
             Text(
                 tile.name,
-                color = Color.White,
+                color = if (bmp != null) Color.White else nameColor,
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = Color.Black.copy(alpha = .45f),
-            modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
-        ) {
-            Text(
-                ageText,
-                color = Color.White.copy(alpha = .9f),
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+        if (fetching) {
+            CircularProgressIndicator(
+                Modifier.align(Alignment.Center).size(28.dp),
+                color = if (bmp != null) Color.White else subColor,
+                strokeWidth = 3.dp,
             )
         }
-    }
+        if (ageText.isNotEmpty() || fetching) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.Black.copy(alpha = .45f),
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            ) {
+                Text(
+                    if (fetching) "peeking…" else ageText,
+                    color = Color.White.copy(alpha = .9f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
+        }
     }
 }
 
