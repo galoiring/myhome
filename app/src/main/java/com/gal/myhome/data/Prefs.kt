@@ -66,10 +66,14 @@ private val DEFAULT_SIZES = mapOf(
     "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
 )
 
-// defaults that changed in v1.1.4 — installs that saved the old value keep
-// tracking the new default until the user picks something else
+// defaults that changed in v1.1.4 — installs that saved the old value (in
+// either height) keep tracking the new default until the user picks a size
+// that isn't Small; the nursery sensor should never end up tiny by accident
 private val STALE_SAVED_SIZES = mapOf(
-    "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+    "a:Temperature and Humidity sensor" to listOf(
+        TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+        TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    ),
 )
 
 data class YeelightCfg(val ip: String, val name: String)
@@ -111,10 +115,10 @@ data class Prefs(
 ) {
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
     fun sizeFor(key: String): TileSizeCfg {
-        // a saved size equal to the pre-v1.1.4 default is stale state, not a
+        // a saved size equal to a pre-v1.1.4 default is stale state, not a
         // user choice — let the new default win; any other value is respected
         val saved = tileSizes[key]
-        return if (saved != null && saved != STALE_SAVED_SIZES[key]) saved
+        return if (saved != null && STALE_SAVED_SIZES[key]?.contains(saved) != true) saved
         else DEFAULT_SIZES[key] ?: TileSizeCfg()
     }
 }

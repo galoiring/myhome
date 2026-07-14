@@ -1,6 +1,6 @@
 {
-  "versionCode": 24,
-  "versionName": "1.1.5",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.5/app-release.apk",
-  "notes": "Doorbell tile now really shrinks (compact half tile, even without a stacking neighbor). Baby Room defaults to a large hero tile with a bigger temperature reading. Sensor history popup grows out of the tapped tile with a spring animation."
+  "versionCode": 25,
+  "versionName": "1.1.6",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.6/app-release.apk",
+  "notes": "Baby Room reliably gets its big hero tile (old saved Small sizes no longer pin it down). Short sensor tiles get a clean compact layout: humidity beside the temperature, nothing drawn over the trend graph."
 }

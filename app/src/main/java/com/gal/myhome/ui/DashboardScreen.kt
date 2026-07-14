@@ -973,15 +973,46 @@ fun TileCard(
                         TileWidth.MEDIUM -> MaterialTheme.typography.displayMedium
                         TileWidth.LARGE -> MaterialTheme.typography.displayLarge
                     }
+                    // a short (stacked Half) tile has no vertical room for a
+                    // pill row under the hero — stacking them pushed the pills
+                    // onto the floor sparkline
+                    val compact = tileMaxHeight < 190.dp
                     if (temp != null) {
-                        Text(
-                            "${temp.value}°",
-                            style = heroStyle,
-                            fontWeight = FontWeight.Medium,
+                        val heroColor =
                             // neutral while comfy; the number itself turns
                             // amber/red when the room drifts out of band
-                            color = tempBand?.second?.takeIf { it != BandGreen } ?: nameColor,
-                        )
+                            tempBand?.second?.takeIf { it != BandGreen } ?: nameColor
+                        if (compact) {
+                            // humidity beside the hero; the band pill is
+                            // dropped — the tinted circle + number carry it
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    "${temp.value}°",
+                                    style = MaterialTheme.typography.displaySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = heroColor,
+                                )
+                                humidity?.let { HumidityPill(it, subColor, nameColor) }
+                            }
+                        } else {
+                            Text(
+                                "${temp.value}°",
+                                style = heroStyle,
+                                fontWeight = FontWeight.Medium,
+                                color = heroColor,
+                            )
+                            Row(
+                                Modifier.padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                tempBand?.let { (label, color) -> StatusPill(label, color) }
+                                humidity?.let { HumidityPill(it, subColor, nameColor) }
+                            }
+                        }
                     } else if (pm25 != null) {
                         Row {
                             Text(
@@ -998,50 +1029,12 @@ fun TileCard(
                                 modifier = Modifier.alignByBaseline().padding(start = 5.dp),
                             )
                         }
-                        pmStatus?.let { (label, color) ->
+                        if (!compact) pmStatus?.let { (label, color) ->
                             StatusPill(label, color, Modifier.padding(top = 6.dp))
                         }
                     }
-                    // comfort-band pill + humidity ride under the temp hero
-                    val humidityPill = humidity.takeIf { temp != null }
-                    if (tempBand != null || humidityPill != null) {
-                        Row(
-                            Modifier.padding(top = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            tempBand?.let { (label, color) -> StatusPill(label, color) }
-                            if (humidityPill != null) {
-                                val hColor = humidityPill.value.toDoubleOrNull()
-                                    ?.let { humidityStatus(it) }
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = hColor?.copy(alpha = 0.18f)
-                                        ?: subColor.copy(alpha = 0.14f),
-                                ) {
-                                    Row(
-                                        Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.WaterDrop, null,
-                                            Modifier.size(14.dp),
-                                            tint = hColor ?: subColor,
-                                        )
-                                        Text(
-                                            "${humidityPill.value}${humidityPill.unit}",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = hColor ?: nameColor,
-                                            fontWeight = FontWeight.Medium,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
                     val rest = tile.sensors.filterNot {
-                        it === temp || it === pm25 || it === humidityPill
+                        it === temp || it === pm25 || (temp != null && it === humidity)
                     }
                     if (rest.isNotEmpty()) {
                         Row(
@@ -2048,6 +2041,30 @@ private fun humidityStatus(v: Double): Color = when {
     v in 40.0..60.0 -> BandGreen
     v in 30.0..70.0 -> Color(0xFFF29900)
     else -> Color(0xFFD93025)
+}
+
+// droplet + % pill, tinted by the 40–60 % comfort band
+@Composable
+private fun HumidityPill(s: SensorUi, subColor: Color, nameColor: Color) {
+    val hColor = s.value.toDoubleOrNull()?.let { humidityStatus(it) }
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = hColor?.copy(alpha = 0.18f) ?: subColor.copy(alpha = 0.14f),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(Icons.Rounded.WaterDrop, null, Modifier.size(14.dp), tint = hColor ?: subColor)
+            Text(
+                "${s.value}${s.unit}",
+                style = MaterialTheme.typography.labelMedium,
+                color = hColor ?: nameColor,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
 }
 
 // dot + label pill used for sensor status bands (AQ, nursery temp)
