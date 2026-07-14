@@ -1,6 +1,6 @@
 {
-  "versionCode": 26,
-  "versionName": "1.1.7",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.7/app-release.apk",
-  "notes": "Doorbell is a small full-image block in the Living Room row next to the purifier — tapping it wakes the camera for a fresh snapshot shown right in the tile. History popup animation reworked: slower grow-from-tile with content fade-in, and it collapses back into the tile on close."
+  "versionCode": 27,
+  "versionName": "1.1.8",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.8/app-release.apk",
+  "notes": "History popup now truly magnifies out of the tapped tile (own fading scrim, opaque card) and got a full redesign: icon header, Now/Low/High/Average stats strip, segmented range picker. Baby-room comfort range is configurable in Settings. Baby Room tile 15% narrower, doorbell 15% wider."
 }

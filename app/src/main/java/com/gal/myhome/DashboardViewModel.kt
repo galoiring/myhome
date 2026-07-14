@@ -19,6 +19,7 @@ import com.gal.myhome.data.SVC
 import com.gal.myhome.data.ServerSettings
 import com.gal.myhome.data.ShellyDevice
 import com.gal.myhome.data.CameraCfg
+import com.gal.myhome.data.DEFAULT_WIDTH_FACTORS
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
 import com.gal.myhome.data.TileSizeCfg
@@ -118,6 +119,8 @@ data class TileUi(
     val room: Room? = null,
     val width: TileWidth = TileWidth.MEDIUM,
     val height: TileHeight = TileHeight.NORMAL,
+    // fine ±% width trim on top of the unit width (see DEFAULT_WIDTH_FACTORS)
+    val widthFactor: Float = 1f,
     val modeControl: SegCtl? = null,
     // brightness pulled out of `controls`: the whole card acts as the dimmer
     val dimmer: SliderCtl? = null,
@@ -637,7 +640,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL)
             else p.sizeFor(it.key)
             val room = p.roomFor(it.key) ?: if (it.camera != null) Room.LIVING else null
-            it.copy(room = room, width = size.width, height = size.height)
+            val factor = if (it.camera?.doorbell == true) 1.15f
+            else DEFAULT_WIDTH_FACTORS[it.key] ?: 1f
+            it.copy(room = room, width = size.width, height = size.height, widthFactor = factor)
         }
         // an explicit user reorder always wins; new tiles not yet placed sort to the end
         if (p.tileOrder.isNotEmpty()) {

@@ -5,28 +5,42 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,9 +60,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -58,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.gal.myhome.DashboardViewModel
 import com.gal.myhome.TileUi
 import kotlinx.coroutines.launch
@@ -72,12 +89,15 @@ import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-private class SeriesDef(val suffix: String, val label: String, val unit: String, val color: Color)
+private class SeriesDef(
+    val suffix: String, val label: String, val unit: String,
+    val color: Color, val icon: ImageVector,
+)
 
 private val SERIES = listOf(
-    SeriesDef("temp", "Temperature", "°C", Color(0xFFE8794A)),
-    SeriesDef("humidity", "Humidity", "%", Color(0xFF4A9BD9)),
-    SeriesDef("pm25", "PM2.5", " µg/m³", Color(0xFF34A853)),
+    SeriesDef("temp", "Temperature", "°C", Color(0xFFE8794A), Icons.Rounded.Thermostat),
+    SeriesDef("humidity", "Humidity", "%", Color(0xFF4A9BD9), Icons.Rounded.WaterDrop),
+    SeriesDef("pm25", "PM2.5", " µg/m³", Color(0xFF34A853), Icons.Rounded.Air),
 )
 
 private val RANGES = listOf(24 to "24 h", 48 to "48 h", 168 to "7 d")
@@ -108,6 +128,11 @@ fun HistorySheet(
         onDismissRequest = { requestDismiss = true },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // the platform dim snaps on instantly, which ruins the magnify
+        // illusion — zero it and draw our own scrim that fades with the
+        // container transform instead
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect { dialogWindow?.setDimAmount(0f) }
         // Dialog windows pop in with no transition of their own — container
         // transform: once the card is measured, spring it from the tapped
         // tile's rect (scaled + translated to cover it) to its resting place,
@@ -135,6 +160,14 @@ fun HistorySheet(
         }
         // outside-tap / back arrive via onDismissRequest, outside this scope
         LaunchedEffect(requestDismiss) { if (requestDismiss) dismiss() }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = (appear.value * 1.4f).coerceIn(0f, 1f) }
+                .background(Color.Black.copy(alpha = 0.45f))
+                .pointerInput(Unit) { detectTapGestures { dismiss() } }
+        )
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -152,14 +185,14 @@ fun HistorySheet(
                     }
                     if (origin != null) {
                         // both rects are window-space; the app is a fullscreen
-                        // panel, so tile window ≈ dialog window closely enough
+                        // panel, so tile window ≈ dialog window closely enough.
+                        // Fully opaque from frame one: the card starts exactly
+                        // over the tile and magnifies out of it
                         val inv = 1f - p // spring overshoot past 1 gives the pop
                         scaleX = 1f + (origin.width / c.width - 1f) * inv
                         scaleY = 1f + (origin.height / c.height - 1f) * inv
                         translationX = (origin.center.x - c.center.x) * inv
                         translationY = (origin.center.y - c.center.y) * inv
-                        // fade in fast so the growing card reads as solid
-                        alpha = (p * 3f).coerceIn(0f, 1f)
                     } else {
                         alpha = p.coerceIn(0f, 1f)
                         scaleX = 0.9f + 0.1f * p
@@ -169,33 +202,56 @@ fun HistorySheet(
                 },
         ) {
             var rangeIdx by remember { mutableIntStateOf(0) }
+            val snapshot = data
+            val available = if (snapshot == null) emptyList() else SERIES.mapNotNull { def ->
+                tile.origNames
+                    .firstNotNullOfOrNull { n -> snapshot["$n|${def.suffix}"] }
+                    ?.let { def to it }
+            }
+            var sel by remember(available.size) { mutableIntStateOf(0) }
+            val selDef = available.getOrNull(sel)?.first
+            val accent = selDef?.color ?: MaterialTheme.colorScheme.primary
             // content fades in a beat behind the container so the card reads
-            // as a surface growing out of the tile, then filling with detail
+            // as a surface magnifying out of the tile, then filling with detail
             Column(
                 Modifier
-                    .padding(24.dp)
+                    .padding(horizontal = 24.dp, vertical = 20.dp)
                     .graphicsLayer {
                         alpha = ((appear.value - 0.3f) / 0.7f).coerceIn(0f, 1f)
                     }
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        tile.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        RANGES.forEachIndexed { i, (_, label) ->
-                            FilterChip(
-                                selected = i == rangeIdx,
-                                onClick = { rangeIdx = i },
-                                label = { Text(label) },
+                    Surface(
+                        shape = CircleShape,
+                        color = accent.copy(alpha = 0.16f),
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                selDef?.icon ?: Icons.Rounded.Thermostat, null,
+                                Modifier.size(22.dp),
+                                tint = accent,
                             )
                         }
                     }
-                    IconButton(onClick = dismiss) { Icon(Icons.Rounded.Close, "close") }
+                    Spacer(Modifier.width(13.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            tile.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "${selDef?.label ?: "History"} · last ${RANGES[rangeIdx].second}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    FilledTonalIconButton(onClick = dismiss, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.Close, "close", Modifier.size(20.dp))
+                    }
                 }
-                val snapshot = data
+                Spacer(Modifier.height(16.dp))
                 when {
                     failed -> Text(
                         "Couldn't load history from the server.",
@@ -207,38 +263,101 @@ fun HistorySheet(
                         Modifier.fillMaxWidth().padding(vertical = 60.dp),
                         contentAlignment = Alignment.Center,
                     ) { CircularProgressIndicator() }
+                    available.isEmpty() -> Text(
+                        "No history for this device yet — the server records a sample every 5 minutes.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 40.dp),
+                    )
                     else -> {
-                        val available = SERIES.mapNotNull { def ->
-                            tile.origNames
-                                .firstNotNullOfOrNull { n -> snapshot["$n|${def.suffix}"] }
-                                ?.let { def to it }
+                        val (def, pts) = available[sel.coerceIn(0, available.lastIndex)]
+                        val hours = RANGES[rangeIdx].first
+                        val cutoff = System.currentTimeMillis() - hours * 3600_000L
+                        val rangePts = pts.filter { it.first >= cutoff }
+                        // at-a-glance numbers for the visible range
+                        if (rangePts.isNotEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 13.dp)) {
+                                    StatCell(
+                                        "Now", fmtVal(rangePts.last().second), def.unit,
+                                        accent, Modifier.weight(1f),
+                                    )
+                                    StatCell(
+                                        "Low", fmtVal(rangePts.minOf { it.second }), def.unit,
+                                        MaterialTheme.colorScheme.onSurface, Modifier.weight(1f),
+                                    )
+                                    StatCell(
+                                        "High", fmtVal(rangePts.maxOf { it.second }), def.unit,
+                                        MaterialTheme.colorScheme.onSurface, Modifier.weight(1f),
+                                    )
+                                    StatCell(
+                                        "Average", fmtVal(rangePts.map { it.second }.average()), def.unit,
+                                        MaterialTheme.colorScheme.onSurface, Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
                         }
-                        if (available.isEmpty()) {
-                            Text(
-                                "No history for this device yet — the server records a sample every 5 minutes.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 40.dp),
-                            )
-                        } else {
-                            var sel by remember(available.size) { mutableIntStateOf(0) }
+                        HistoryChart(pts, def.color, def.unit, hours)
+                        Spacer(Modifier.height(14.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             if (available.size > 1) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    available.forEachIndexed { i, (def, _) ->
+                                    available.forEachIndexed { i, (d, _) ->
                                         FilterChip(
                                             selected = i == sel,
                                             onClick = { sel = i },
-                                            label = { Text(def.label) },
+                                            label = { Text(d.label) },
                                         )
                                     }
                                 }
                             }
-                            val (def, pts) = available[sel]
-                            HistoryChart(pts, def.color, def.unit, RANGES[rangeIdx].first)
+                            Spacer(Modifier.weight(1f))
+                            SingleChoiceSegmentedButtonRow(Modifier.height(38.dp)) {
+                                RANGES.forEachIndexed { i, (_, label) ->
+                                    SegmentedButton(
+                                        selected = i == rangeIdx,
+                                        onClick = { rangeIdx = i },
+                                        shape = SegmentedButtonDefaults.itemShape(i, RANGES.size),
+                                        icon = {},
+                                    ) { Text(label) }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+        }
+    }
+}
+
+// one number in the modal's stats strip
+@Composable
+private fun StatCell(label: String, value: String, unit: String, color: Color, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row {
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = color,
+                modifier = Modifier.alignByBaseline(),
+            )
+            if (unit.isNotBlank()) Text(
+                unit.trim(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.alignByBaseline().padding(start = 3.dp),
+            )
         }
     }
 }

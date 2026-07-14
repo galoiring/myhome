@@ -66,6 +66,13 @@ private val DEFAULT_SIZES = mapOf(
     "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
 )
 
+// fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit
+// system can't express; applied as a multiplier on the tile's unit width.
+// Doorbell cameras get their own +15 % via the doorbell flag in the VM
+internal val DEFAULT_WIDTH_FACTORS = mapOf(
+    "a:Temperature and Humidity sensor" to 0.85f,
+)
+
 // defaults that changed in v1.1.4 — installs that saved the old value (in
 // either height) keep tracking the new default until the user picks a size
 // that isn't Small; the nursery sensor should never end up tiny by accident
@@ -100,6 +107,9 @@ data class Prefs(
     val nightMode: Boolean = true,
     val nightStartHour: Int = 23,
     val nightEndHour: Int = 7,
+    // nursery comfort band (°C) — drives the temp tile's colors and pill
+    val comfortTempLow: Int = 18,
+    val comfortTempHigh: Int = 22,
     // during night hours the theme goes dark even if set to Light/System —
     // separately toggleable so the Theme control isn't mysteriously "broken"
     val nightDarkTheme: Boolean = true,
@@ -144,6 +154,8 @@ class PrefsRepo(private val context: Context) {
         val nightMode = booleanPreferencesKey("night_mode")
         val nightStartHour = intPreferencesKey("night_start_hour")
         val nightEndHour = intPreferencesKey("night_end_hour")
+        val comfortTempLow = intPreferencesKey("comfort_temp_low")
+        val comfortTempHigh = intPreferencesKey("comfort_temp_high")
         val nightDarkTheme = booleanPreferencesKey("night_dark_theme")
         val rooms = stringPreferencesKey("rooms")
         val yeelights = stringPreferencesKey("yeelights")
@@ -237,6 +249,8 @@ class PrefsRepo(private val context: Context) {
             nightMode = p[K.nightMode] ?: true,
             nightStartHour = p[K.nightStartHour] ?: 23,
             nightEndHour = p[K.nightEndHour] ?: 7,
+            comfortTempLow = p[K.comfortTempLow] ?: 18,
+            comfortTempHigh = p[K.comfortTempHigh] ?: 22,
             nightDarkTheme = p[K.nightDarkTheme] ?: true,
             rooms = parseRooms(p[K.rooms]),
             yeelights = parseYeelights(p[K.yeelights]),
@@ -265,6 +279,8 @@ class PrefsRepo(private val context: Context) {
             p[K.nightMode] = prefs.nightMode
             p[K.nightStartHour] = prefs.nightStartHour
             p[K.nightEndHour] = prefs.nightEndHour
+            p[K.comfortTempLow] = prefs.comfortTempLow
+            p[K.comfortTempHigh] = prefs.comfortTempHigh
             p[K.nightDarkTheme] = prefs.nightDarkTheme
             p[K.rooms] = JSONObject(prefs.rooms.mapValues { it.value.name }).toString()
             p[K.yeelights] = JSONArray(prefs.yeelights.map {

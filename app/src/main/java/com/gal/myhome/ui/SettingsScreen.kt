@@ -265,6 +265,27 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                 }
             }
 
+            /* ---- nursery comfort band ---- */
+            item { SectionHeader("Baby room comfort") }
+            item {
+                Text(
+                    "Room-temperature range that counts as comfortable. The sensor tile shows green inside it, amber just outside, red further out.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+            }
+            item {
+                TempStepperRow("Comfy from", prefs.comfortTempLow, 12, prefs.comfortTempHigh - 1) {
+                    vm.updatePrefs(prefs.copy(comfortTempLow = it))
+                }
+            }
+            item {
+                TempStepperRow("Comfy up to", prefs.comfortTempHigh, prefs.comfortTempLow + 1, 30) {
+                    vm.updatePrefs(prefs.copy(comfortTempHigh = it))
+                }
+            }
+
             /* ---- yeelight LAN ---- */
             item { SectionHeader("Yeelight (LAN)") }
             item {
@@ -719,6 +740,36 @@ private fun HourStepperRow(label: String, value: Int, onChange: (Int) -> Unit) {
             onClick = { onChange((value + 1) % 24) },
             modifier = Modifier.size(36.dp),
         ) { Icon(Icons.Rounded.Add, "later", Modifier.size(18.dp)) }
+    }
+}
+
+@Composable
+private fun TempStepperRow(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
+    Row(
+        Modifier.padding(vertical = 4.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.width(112.dp),
+        )
+        FilledTonalIconButton(
+            onClick = { onChange((value - 1).coerceAtLeast(min)) },
+            enabled = value > min,
+            modifier = Modifier.size(36.dp),
+        ) { Icon(Icons.Rounded.Remove, "colder", Modifier.size(18.dp)) }
+        Text(
+            "$value°C",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.width(80.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        FilledTonalIconButton(
+            onClick = { onChange((value + 1).coerceAtMost(max)) },
+            enabled = value < max,
+            modifier = Modifier.size(36.dp),
+        ) { Icon(Icons.Rounded.Add, "warmer", Modifier.size(18.dp)) }
     }
 }
 

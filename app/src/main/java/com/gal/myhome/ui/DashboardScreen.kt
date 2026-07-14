@@ -582,8 +582,11 @@ private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
 // a column is one Normal-height tile, or two Half-height tiles of the same
 // width stacked together; a lone Half-height tile (no matching neighbor)
 // renders in the top half of its column so "shrink this tile" still works
-// without a stacking partner (the doorbell is usually that tile)
-private class PackedColumn(val widthUnits: Int, val tiles: List<TileUi>)
+// without a stacking partner. Units are fractional: a tile's widthFactor
+// applies fine ±% trims the coarse S/M/L unit system can't express
+private class PackedColumn(val units: Float, val tiles: List<TileUi>)
+
+private fun adjUnits(t: TileUi): Float = t.width.units * t.widthFactor
 
 private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): List<PackedColumn> {
     val cols = mutableListOf<PackedColumn>()
@@ -599,10 +602,10 @@ private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): Lis
         val bothNormal = allowNormalStack &&
             t.height == TileHeight.NORMAL && next?.height == TileHeight.NORMAL
         if (next != null && next.width == t.width && (bothHalf || bothNormal)) {
-            cols.add(PackedColumn(t.width.units, listOf(t, next)))
+            cols.add(PackedColumn(maxOf(adjUnits(t), adjUnits(next)), listOf(t, next)))
             i += 2
         } else {
-            cols.add(PackedColumn(t.width.units, listOf(t)))
+            cols.add(PackedColumn(adjUnits(t), listOf(t)))
             i += 1
         }
     }
@@ -659,7 +662,7 @@ fun RoomGroupedGrid(
         // column gaps only made every multi-unit row overflow the right edge
         // by one gap per extra unit — clipping the rightmost tile's content
         val minUnitWidth = packedRows.minOf { (_, cols) ->
-            val totalUnits = cols.sumOf { it.widthUnits }
+            val totalUnits = cols.map { it.units }.sum()
             (maxWidth - gap * (totalUnits - 1)) / totalUnits
         }
         // a sparse row may stretch a bit past the shared baseline (capped) so
@@ -670,7 +673,7 @@ fun RoomGroupedGrid(
         // outside ColumnScope below, since `maxWidth` needs the
         // BoxWithConstraints receiver.)
         val rowUnitWidths = packedRows.map { (_, cols) ->
-            val totalUnits = cols.sumOf { it.widthUnits }
+            val totalUnits = cols.map { it.units }.sum()
             val naturalWidth = (maxWidth - gap * (totalUnits - 1)) / totalUnits
             minOf(naturalWidth, minUnitWidth * 1.3f)
         }
@@ -697,7 +700,7 @@ fun RoomGroupedGrid(
                         horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
                     ) {
                         cols.forEach { col ->
-                            val colWidth = rowUnitWidth * col.widthUnits + gap * (col.widthUnits - 1)
+                            val colWidth = rowUnitWidth * col.units + gap * (col.units - 1)
                             Box(Modifier.width(colWidth).fillMaxHeight()) {
                                 if (col.tiles.size == 2) {
                                     Column(
@@ -950,7 +953,8 @@ fun TileCard(
                 val pm25 = tile.sensors.firstOrNull { it.kind == SensorKind.PM25 }
                 val humidity = tile.sensors.firstOrNull { it.kind == SensorKind.HUMIDITY }
                 val pmStatus = pm25?.value?.toDoubleOrNull()?.let { pm25Status(it) }
-                val tempBand = temp?.value?.toDoubleOrNull()?.let { tempStatus(it) }
+                val tempBand = temp?.value?.toDoubleOrNull()
+                    ?.let { tempStatus(it, prefs.comfortTempLow, prefs.comfortTempHigh) }
                 // status-colored icon circle: AQ tiles follow the PM2.5 band,
                 // temp tiles the nursery comfort band
                 val (accentCircle, accentIcon) = when {
@@ -1994,13 +1998,14 @@ private fun pm25Status(v: Double): Pair<String, Color> = when {
 
 private val BandGreen = Color(0xFF34A853)
 
-// nursery comfort bands (18–22 °C is the recommended sleep range for a
-// baby's room), same palette as the PM2.5 bands
-private fun tempStatus(v: Double): Pair<String, Color> = when {
-    v < 16 -> "Cold" to Color(0xFFD93025)
-    v < 18 -> "Cool" to Color(0xFFF29900)
-    v <= 22 -> "Comfy" to BandGreen
-    v <= 26 -> "Warm" to Color(0xFFF29900)
+// nursery comfort bands, same palette as the PM2.5 bands. The comfy range
+// is user-set (Settings > Baby room comfort, default 18–22 °C); amber
+// covers 2° below / 4° above it, red anything beyond
+private fun tempStatus(v: Double, lo: Int, hi: Int): Pair<String, Color> = when {
+    v < lo - 2 -> "Cold" to Color(0xFFD93025)
+    v < lo -> "Cool" to Color(0xFFF29900)
+    v <= hi -> "Comfy" to BandGreen
+    v <= hi + 4 -> "Warm" to Color(0xFFF29900)
     else -> "Hot" to Color(0xFFD93025)
 }
 
