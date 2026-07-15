@@ -123,7 +123,10 @@ function shortType(t) {
    Readings older than PUSH_STALE_MS drop out (a dead automation should
    read as "sensor gone", not chart a flatline forever). ---- */
 const PUSH_FILE = path.join(__dirname, 'push-sensors.json');
-const PUSH_STALE_MS = 3 * 3600 * 1000;
+// generous window: Apple Home time automations realistically push a handful
+// of times a day; the tile should survive the gaps but still clear out if
+// the automation dies for good
+const PUSH_STALE_MS = 6 * 3600 * 1000;
 let pushSensors = {};
 try {
   pushSensors = JSON.parse(fs.readFileSync(PUSH_FILE, 'utf8'));
