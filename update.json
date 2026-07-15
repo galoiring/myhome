@@ -1,6 +1,6 @@
 {
-  "versionCode": 27,
-  "versionName": "1.1.8",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.8/app-release.apk",
-  "notes": "History popup now truly magnifies out of the tapped tile (own fading scrim, opaque card) and got a full redesign: icon header, Now/Low/High/Average stats strip, segmented range picker. Baby-room comfort range is configurable in Settings. Baby Room tile 15% narrower, doorbell 15% wider."
+  "versionCode": 28,
+  "versionName": "1.1.9",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.9/app-release.apk",
+  "notes": "Bedroom climate tile: the server now accepts pushed readings (e.g. the bedroom HomePod mini via an Apple Home automation) and serves them like any sensor — comfort colors, humidity pill, history and the magnify popup all included. Comfort-range setting now applies to every room sensor."
 }

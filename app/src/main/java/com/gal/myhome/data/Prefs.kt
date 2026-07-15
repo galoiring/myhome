@@ -43,6 +43,8 @@ private val DEFAULT_ROOMS = mapOf(
     "a:Ceiling Light" to Room.BEDROOM,
     "a:ceilb-4dc114" to Room.BABY,
     "a:Temperature and Humidity sensor" to Room.BABY,
+    // synthetic sensor pushed to the server by the bedroom HomePod's automation
+    "a:Bedroom" to Room.BEDROOM,
 )
 
 // same idea as DEFAULT_ROOMS: sensible starting sizes, overridable per tile in
@@ -64,6 +66,7 @@ private val DEFAULT_SIZES = mapOf(
     // …except the nursery sensor: with a newborn it's the single most-glanced
     // tile on the wall, so it gets hero width
     "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
+    "a:Bedroom" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
 )
 
 // fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit

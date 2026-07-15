@@ -265,11 +265,11 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                 }
             }
 
-            /* ---- nursery comfort band ---- */
-            item { SectionHeader("Baby room comfort") }
+            /* ---- room comfort band ---- */
+            item { SectionHeader("Room comfort") }
             item {
                 Text(
-                    "Room-temperature range that counts as comfortable. The sensor tile shows green inside it, amber just outside, red further out.",
+                    "Room-temperature range that counts as comfortable. Every room sensor tile (Baby Room, Bedroom…) shows green inside it, amber just outside, red further out.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 6.dp),

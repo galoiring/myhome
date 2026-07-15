@@ -114,6 +114,57 @@ function shortType(t) {
   return s || '0';
 }
 
+/* ---- pushed sensors: readings POSTed by things the HAP bridge can't see
+   (e.g. a HomePod mini's temp/humidity, forwarded by an Apple Home
+   automation running a Shortcut). Served back as synthetic accessories so
+   the app's tiles, comfort bands and history need no special casing.
+     POST /api/push-sensor  {"name":"Bedroom","temp":23.5,"humidity":48}
+     GET  /api/push-sensor?name=Bedroom&temp=23.5&humidity=48
+   Readings older than PUSH_STALE_MS drop out (a dead automation should
+   read as "sensor gone", not chart a flatline forever). ---- */
+const PUSH_FILE = path.join(__dirname, 'push-sensors.json');
+const PUSH_STALE_MS = 3 * 3600 * 1000;
+let pushSensors = {};
+try {
+  pushSensors = JSON.parse(fs.readFileSync(PUSH_FILE, 'utf8'));
+} catch (_) {
+  /* first run */
+}
+
+function savePushSensors() {
+  try {
+    fs.writeFileSync(PUSH_FILE + '.tmp', JSON.stringify(pushSensors));
+    fs.renameSync(PUSH_FILE + '.tmp', PUSH_FILE);
+  } catch (_) {
+    /* disk hiccup — memory copy still fine */
+  }
+}
+
+function syntheticAccessories() {
+  const now = Date.now();
+  return Object.entries(pushSensors)
+    .filter(([, s]) => now - s.ts < PUSH_STALE_MS)
+    .map(([name, s], i) => {
+      const services = [
+        { type: '3E', iid: 1, characteristics: [{ type: '23', iid: 2, value: name, perms: ['pr'], format: 'string' }] },
+      ];
+      if (typeof s.temp === 'number') {
+        services.push({
+          type: '8A', iid: 10,
+          characteristics: [{ type: '11', iid: 11, value: s.temp, perms: ['pr'], format: 'float' }],
+        });
+      }
+      if (typeof s.humidity === 'number') {
+        services.push({
+          type: '82', iid: 20,
+          characteristics: [{ type: '10', iid: 21, value: s.humidity, perms: ['pr'], format: 'float' }],
+        });
+      }
+      // aid range far above anything Homebridge hands out
+      return { aid: 900001 + i, services };
+    });
+}
+
 async function sampleHistory() {
   let j;
   try {
@@ -123,7 +174,7 @@ async function sampleHistory() {
     return; // HAP briefly unreachable; try again next tick
   }
   const now = Date.now();
-  for (const acc of j.accessories || []) {
+  for (const acc of (j.accessories || []).concat(syntheticAccessories())) {
     let name = 'Accessory ' + acc.aid;
     for (const svc of acc.services || []) {
       if (shortType(svc.type) !== '3E') continue; // AccessoryInformation
@@ -268,7 +319,41 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.url === '/api/accessories' && req.method === 'GET') {
       const r = await hapRequest('GET', '/accessories');
-      json(res, r.status, r.body);
+      let body = r.body;
+      // splice pushed sensors in as regular accessories
+      try {
+        const j = JSON.parse(body);
+        j.accessories = (j.accessories || []).concat(syntheticAccessories());
+        body = JSON.stringify(j);
+      } catch (_) {
+        /* HAP hiccup — pass its response through untouched */
+      }
+      json(res, r.status, body);
+      return;
+    }
+
+    if (req.url.startsWith('/api/push-sensor') && (req.method === 'POST' || req.method === 'GET')) {
+      let name, temp, humidity;
+      if (req.method === 'POST') {
+        const b = JSON.parse((await readBody(req)) || '{}');
+        name = b.name; temp = b.temp; humidity = b.humidity;
+      } else {
+        const q = new URL(req.url, 'http://x').searchParams;
+        name = q.get('name'); temp = q.get('temp'); humidity = q.get('humidity');
+      }
+      name = String(name || '').trim();
+      const num = (v) => (v === null || v === undefined || v === '' ? undefined : Number(v));
+      temp = num(temp);
+      humidity = num(humidity);
+      const bad = (v) => v !== undefined && !Number.isFinite(v);
+      if (!name || name.length > 40 || bad(temp) || bad(humidity) ||
+          (temp === undefined && humidity === undefined)) {
+        json(res, 400, { error: 'name and a numeric temp and/or humidity required' });
+        return;
+      }
+      pushSensors[name] = { temp, humidity, ts: Date.now() };
+      savePushSensors();
+      json(res, 200, { ok: true });
       return;
     }
 
