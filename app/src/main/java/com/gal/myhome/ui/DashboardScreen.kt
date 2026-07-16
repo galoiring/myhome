@@ -71,6 +71,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -1519,12 +1520,17 @@ private fun MoonPill(tile: TileUi, vm: DashboardViewModel, subColor: Color, modi
         shape = RoundedCornerShape(50),
         color = if (moonOn) Color(0xFF3A3563)
         else MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = modifier,
+        // off state gets an edge so it reads as a pressable button, not a
+        // status chip — a missed tap here toggles the whole light tile
+        border = if (moonOn) null else BorderStroke(1.dp, subColor.copy(alpha = 0.35f)),
+        // pad the touchable area out to the 48dp material target even though
+        // the pill draws smaller
+        modifier = modifier.minimumInteractiveComponentSize(),
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Icon(
                 Icons.Rounded.Bedtime, "Moonlight mode",
-                Modifier.size(17.dp),
+                Modifier.size(21.dp),
                 tint = if (moonOn) Color(0xFFC9C2FF) else subColor,
             )
         }
@@ -1545,7 +1551,7 @@ private fun WarmthDots(
         if (moonTile?.moon != null) {
             // moonlight matters more than the label on these lights — the
             // pill takes over the label slot (same width keeps rows aligned)
-            MoonPill(moonTile, vm, subColor, Modifier.width(58.dp).height(34.dp))
+            MoonPill(moonTile, vm, subColor, Modifier.width(66.dp).height(44.dp))
             Spacer(Modifier.width(8.dp))
         } else Text(
             ctl.label,
