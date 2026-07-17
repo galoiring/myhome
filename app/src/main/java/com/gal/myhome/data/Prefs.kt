@@ -45,6 +45,8 @@ private val DEFAULT_ROOMS = mapOf(
     "a:Temperature and Humidity sensor" to Room.BABY,
     // synthetic sensor pushed to the server by the bedroom HomePod's automation
     "a:Bedroom" to Room.BEDROOM,
+    // synthetic sensor pulled from the Sensibo child bridge by the server
+    "a:Living Room" to Room.LIVING,
 )
 
 // same idea as DEFAULT_ROOMS: sensible starting sizes, overridable per tile in
@@ -67,6 +69,7 @@ private val DEFAULT_SIZES = mapOf(
     // tile on the wall, so it gets hero width
     "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
     "a:Bedroom" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    "a:Living Room" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
 )
 
 // fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit

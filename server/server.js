@@ -210,13 +210,47 @@ async function sampleHistory() {
 setInterval(sampleHistory, HISTORY_SAMPLE_MS);
 setTimeout(sampleHistory, 5000); // first sample shortly after boot
 
-function hapRequest(method, pathName, body) {
+/* ---- pulled sensors: poll additional local HAP bridges (settings key
+   `pullSensors`) for the first temp/humidity they expose and feed the
+   readings through the push-sensor pipeline — same synthetic accessory,
+   staleness and history behavior as pushed ones ---- */
+const PULL_SENSOR_MS = 2 * 60 * 1000;
+async function pullBridgeSensors() {
+  for (const src of readSettings().pullSensors) {
+    const port = Number(src && src.port);
+    const name = String((src && src.name) || '').trim();
+    if (!port || !name) continue;
+    try {
+      const r = await hapRequest('GET', '/accessories', null, port);
+      let temp, humidity;
+      for (const acc of JSON.parse(r.body).accessories || []) {
+        for (const svc of acc.services || []) {
+          for (const ch of svc.characteristics || []) {
+            const t = shortType(ch.type);
+            if (t === '11' && typeof ch.value === 'number' && temp === undefined) temp = ch.value;
+            if (t === '10' && typeof ch.value === 'number' && humidity === undefined) humidity = ch.value;
+          }
+        }
+      }
+      if (temp !== undefined || humidity !== undefined) {
+        pushSensors[name] = { temp, humidity, ts: Date.now() };
+        savePushSensors();
+      }
+    } catch (_) {
+      /* bridge briefly away; next tick */
+    }
+  }
+}
+setInterval(pullBridgeSensors, PULL_SENSOR_MS);
+setTimeout(pullBridgeSensors, 7000);
+
+function hapRequest(method, pathName, body, port = HAP_PORT) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const req = http.request(
       {
         host: HAP_HOST,
-        port: HAP_PORT,
+        port,
         method,
         path: pathName,
         agent: false, // HAP's evented HTTP server hangs on keep-alive connections
@@ -245,6 +279,11 @@ function sanitizeSettings(s) {
     groups: Array.isArray(s.groups) ? s.groups : [],
     hidden: Array.isArray(s.hidden) ? s.hidden : [],
     shellies: Array.isArray(s.shellies) ? s.shellies : [],
+    // extra local HAP bridges to poll for temp/humidity, republished as
+    // pushed sensors: [{ "port": 51711, "name": "Living Room" }]
+    // (e.g. a Sensibo child bridge — its AC reports both, but the main
+    // bridge only carries an orchestrator without humidity)
+    pullSensors: Array.isArray(s.pullSensors) ? s.pullSensors : [],
   };
 }
 

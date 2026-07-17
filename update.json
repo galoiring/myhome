@@ -1,6 +1,6 @@
 {
-  "versionCode": 29,
-  "versionName": "1.1.10",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.10/app-release.apk",
-  "notes": "Moonlight button is much easier to hit: bigger pill (66x44), larger icon, a visible border in the off state, and an invisible 48dp touch halo so near-misses toggle the moonlight instead of the whole light."
+  "versionCode": 30,
+  "versionName": "1.1.11",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.11/app-release.apk",
+  "notes": "Living Room climate tile: the server can now pull temp/humidity from extra local HAP bridges (the Sensibo child bridge) and republish them as sensors — comfort colors, humidity pill and history included. Requires the matching server.js deploy."
 }
