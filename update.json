@@ -1,6 +1,6 @@
 {
-  "versionCode": 30,
-  "versionName": "1.1.11",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.11/app-release.apk",
-  "notes": "Living Room climate tile: the server can now pull temp/humidity from extra local HAP bridges (the Sensibo child bridge) and republish them as sensors — comfort colors, humidity pill and history included. Requires the matching server.js deploy."
+  "versionCode": 31,
+  "versionName": "1.1.12",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.12/app-release.apk",
+  "notes": "Arbel's Room and Living Room climate tiles stack into one column (both show their trend graph), and sparse rows now merge into full-width rows instead of floating centered with big margins."
 }

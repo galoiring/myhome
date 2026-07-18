@@ -634,18 +634,20 @@ fun RoomGroupedGrid(
             return@BoxWithConstraints
         }
         val rawRows = groupIntoRows(tiles)
-        // coalesce a sparse trailing row (≤2 tiles) up into the row before it
-        // when the combined width still fits — so a single leftover tile never
-        // claims its own full-height, stretched, mostly-empty line. The merged
-        // row then packs with vertical stacking enabled (see packRow)
-        val maxRowUnits = 11
+        // coalesce a sparse trailing row (≤3 tiles) up into the row before it
+        // when the combined PACKED width still fits — packing must be measured
+        // on the merged row because stacking (Half pairs, merged-row Normal
+        // pairs) frees width the raw tile sum can't see; two sparse centered
+        // rows that stack into one full row should render as one row
+        val maxRowUnits = 11f
         val rows = mutableListOf<RoomRow>()
         for (r in rawRows) {
             val prev = rows.lastOrNull()
-            val prevUnits = prev?.tiles?.sumOf { it.width.units } ?: 0
-            val rUnits = r.tiles.sumOf { it.width.units }
-            if (prev != null && !prev.bigSingleRoom && r.tiles.size <= 2 &&
-                prevUnits + rUnits <= maxRowUnits
+            val mergedUnits = if (prev == null) Float.MAX_VALUE
+            else packRow(prev.tiles + r.tiles, allowNormalStack = true)
+                .map { it.units }.sum()
+            if (prev != null && !prev.bigSingleRoom && r.tiles.size <= 3 &&
+                mergedUnits <= maxRowUnits
             ) {
                 val label = listOfNotNull(prev.label, r.label)
                     .flatMap { it.split(" · ") }.distinct().joinToString(" · ")

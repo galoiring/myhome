@@ -21,7 +21,7 @@ enum class Room(val label: String, val priority: Int) {
     LIVING("Living Room", 0),
     WHOLE_HOME("Whole home", 1),
     BEDROOM("Bedroom", 2),
-    BABY("Baby Room", 3),
+    BABY("Arbel's Room", 3),
     OTHER("Other", 4),
 }
 
@@ -65,19 +65,19 @@ private val DEFAULT_SIZES = mapOf(
     "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     // sensor tiles are pure readouts — compact by default…
     "a:Mi Air Purifier:aq" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
-    // …except the nursery sensor: with a newborn it's the single most-glanced
-    // tile on the wall, so it gets hero width
-    "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
+    // …except the room-climate pair: Large + Half so the nursery and living
+    // room readings stack into one column, hero-wide but half-tall each
+    "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
     "a:Bedroom" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
-    "a:Living Room" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+    "a:Living Room" to TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
 )
 
 // fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit
 // system can't express; applied as a multiplier on the tile's unit width.
-// Doorbell cameras get their own +15 % via the doorbell flag in the VM
-internal val DEFAULT_WIDTH_FACTORS = mapOf(
-    "a:Temperature and Humidity sensor" to 0.85f,
-)
+// Doorbell cameras get their own +15 % via the doorbell flag in the VM.
+// (The nursery sensor's old -15 % went away when the climate tiles started
+// stacking into a shared column.)
+internal val DEFAULT_WIDTH_FACTORS = mapOf<String, Float>()
 
 // defaults that changed in v1.1.4 — installs that saved the old value (in
 // either height) keep tracking the new default until the user picks a size
