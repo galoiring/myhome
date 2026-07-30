@@ -536,7 +536,12 @@ const server = http.createServer(async (req, res) => {
         json(res, 400, { error: 'settings must be an object' });
         return;
       }
-      const clean = sanitizeSettings(s);
+      // merge over the stored settings rather than replacing them: clients
+      // only send the keys they know about, and an older one (the Android app
+      // has no notion of pullSensors) must not silently wipe a key just by
+      // saving a tile rename. A key the client DID send still wins, including
+      // an empty array — that's a deliberate "clear this list"
+      const clean = sanitizeSettings({ ...readSettings(), ...s });
       writeSettings(clean);
       json(res, 200, clean);
       return;

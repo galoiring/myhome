@@ -94,7 +94,16 @@ data class MoonUi(
     val yl: YlRef? = null,
 )
 
-data class SensorUi(val kind: SensorKind, val value: String, val unit: String)
+// live = the service's StatusActive says the reading is real. An unreachable
+// device still answers HAP with zeros, so a dead purifier used to render as a
+// confident "0 µg/m³ · Good"; when live is false the value is already "—" and
+// the UI drops the status band instead of inventing one
+data class SensorUi(
+    val kind: SensorKind,
+    val value: String,
+    val unit: String,
+    val live: Boolean = true,
+)
 
 data class ShellyRef(val ip: String, val compId: Int, val compType: String)
 
@@ -116,6 +125,9 @@ data class TileUi(
     val toggleIsActive: Boolean,
     val yeelight: String? = null,
     val camera: CameraCfg? = null,
+    // every sensor service on the accessory reports StatusActive false — the
+    // device is unreachable, so its readings and controls are meaningless
+    val notReporting: Boolean = false,
     val room: Room? = null,
     val width: TileWidth = TileWidth.MEDIUM,
     val height: TileHeight = TileHeight.NORMAL,
@@ -621,6 +633,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     shelly = null,
                     toggleTargets = emptyList(),
                     toggleIsActive = false,
+                    notReporting = t.notReporting,
                 ))
             } else {
                 split.add(t)
@@ -639,7 +652,14 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             val size = if (it.camera?.doorbell == true && (saved == null || saved == TileSizeCfg()))
                 TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL)
             else p.sizeFor(it.key)
-            val room = p.roomFor(it.key) ?: if (it.camera != null) Room.LIVING else null
+            // a split-off sensor tile ("…:aq") has no room key of its own, so
+            // it used to fall out of its parent's room row and land in the
+            // unassigned trailing row — where the room label the tile's short
+            // name relies on for context isn't there either
+            val parentKey = it.key.substringBeforeLast(":aq", "")
+            val room = p.roomFor(it.key)
+                ?: parentKey.takeIf { k -> k.isNotEmpty() }?.let(p::roomFor)
+                ?: if (it.camera != null) Room.LIVING else null
             val factor = if (it.camera?.doorbell == true) 1.15f
             else DEFAULT_WIDTH_FACTORS[it.key] ?: 1f
             it.copy(room = room, width = size.width, height = size.height, widthFactor = factor)
@@ -717,6 +737,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         var moonOnTargets = emptyList<Target>()
         var moonOffTargets = emptyList<Target>()
         var onAny = false
+        // StatusActive across the accessory's sensor services: present but
+        // uniformly false means the whole device is offline, not just one probe
+        var anyStatusActive = false
+        var allStatusInactive = true
         val subParts = mutableListOf<String>()
         val occCount = mutableMapOf<String, Int>()
         val hasMultipleLights = acc.services.count { it.type == SVC.LIGHT } > 1
@@ -845,29 +869,41 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 chips.add(ChipUi(cid(c), "Swing", chrValue(acc.aid, c).asBool(), true, tg(T.SWING)))
             }
 
+            // a sensor service that reports StatusActive false is talking about
+            // a device it can't reach — every reading it returns is a filler
+            // zero, so surface "—" rather than a plausible-looking number
+            val live = svc.ch(T.STATUS_ACTIVE)
+                ?.let { chrValue(acc.aid, it).asBool() } ?: true
+            if (svc.ch(T.STATUS_ACTIVE) != null) {
+                anyStatusActive = true
+                if (live) allStatusInactive = false
+            }
+            fun reading(kind: SensorKind, value: String, unit: String) =
+                sensors.add(SensorUi(kind, if (live) value else "—", unit, live))
+
             svc.ch(T.CUR_TEMP)?.let { c ->
-                sensors.add(SensorUi(SensorKind.TEMP, fmtNum(chrValue(acc.aid, c)), "°C"))
+                reading(SensorKind.TEMP, fmtNum(chrValue(acc.aid, c)), "°C")
             }
             svc.ch(T.HUMID)?.let { c ->
-                sensors.add(SensorUi(SensorKind.HUMIDITY, fmtNum(chrValue(acc.aid, c)), "%"))
+                reading(SensorKind.HUMIDITY, fmtNum(chrValue(acc.aid, c)), "%")
             }
             svc.ch(T.AIRQ)?.let { c ->
                 val v = chrValue(acc.aid, c).asDouble()?.toInt() ?: 0
-                sensors.add(SensorUi(SensorKind.AIR_QUALITY, AIRQ_LABELS.getOrElse(v) { "—" }, ""))
+                reading(SensorKind.AIR_QUALITY, AIRQ_LABELS.getOrElse(v) { "—" }, "")
             }
             svc.ch(T.PM25)?.let { c ->
-                sensors.add(SensorUi(SensorKind.PM25, fmtNum(chrValue(acc.aid, c)), "µg/m³"))
+                reading(SensorKind.PM25, fmtNum(chrValue(acc.aid, c)), "µg/m³")
             }
             svc.ch(T.OCC)?.let { c ->
-                sensors.add(SensorUi(SensorKind.OCCUPANCY,
-                    if (chrValue(acc.aid, c).asBool()) "Active" else "Idle", ""))
+                reading(SensorKind.OCCUPANCY,
+                    if (chrValue(acc.aid, c).asBool()) "Active" else "Idle", "")
             }
             svc.ch(T.MOTION)?.let { c ->
-                sensors.add(SensorUi(SensorKind.MOTION,
-                    if (chrValue(acc.aid, c).asBool()) "Active" else "Idle", ""))
+                reading(SensorKind.MOTION,
+                    if (chrValue(acc.aid, c).asBool()) "Active" else "Idle", "")
             }
             svc.ch(T.FILTER)?.let { c ->
-                sensors.add(SensorUi(SensorKind.FILTER, fmtNum(chrValue(acc.aid, c)), "% filter"))
+                reading(SensorKind.FILTER, fmtNum(chrValue(acc.aid, c)), "% filter")
             }
         }
 
@@ -897,10 +933,16 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         (overrides["main:$key"]?.first as? Boolean)?.let { onAny = it }
 
         val kind = tileKind(acc)
+        val notReporting = anyStatusActive && allStatusInactive
         if (kind == TileKind.PURIFIER) {
-            // keep the wall view simple: auto/manual + speed + PM2.5 only
+            // keep the wall view simple: auto/manual + speed on the controls
+            // tile, PM2.5 + the device's own air-quality band on the split-off
+            // Air Quality tile (dropping the band left that tile showing a bare
+            // number under a heading promising exactly that reading)
             chips.clear()
-            sensors.retainAll { it.kind == SensorKind.PM25 }
+            sensors.retainAll {
+                it.kind == SensorKind.PM25 || it.kind == SensorKind.AIR_QUALITY
+            }
         }
         if (kind == TileKind.AC) {
             // the header's "inside" pill already shows this same reading —
@@ -920,6 +962,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         val hasToggle = toggleTargets.isNotEmpty()
         val parts = subParts.take(3).joinToString(" · ")
         val sub = when {
+            // an unreachable device reports "off, zero, manual" — saying so
+            // would be a lie the tile has the information to avoid
+            notReporting -> "Offline"
             hasToggle -> if (onAny) parts.ifEmpty { "On" } else "Off"
             kind == TileKind.SENSOR -> "" // the tile body shows the readings large
             else -> parts
@@ -942,6 +987,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             shelly = null,
             toggleTargets = toggleTargets,
             toggleIsActive = toggleIsActive,
+            notReporting = notReporting,
             modeControl = modeCtl,
             dimmer = dimmer,
             moon = if (moonOnTargets.isNotEmpty()) MoonUi(moonOn, moonOnTargets, moonOffTargets) else null,

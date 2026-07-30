@@ -10,6 +10,10 @@ object T {
     const val TGT_AP = "A8"; const val CUR_AP = "A9"; const val SPEED = "29"; const val SWING = "B6"
     const val OCC = "71"; const val MOTION = "22"; const val CONTACT = "6A"; const val FILTER = "AB"
     const val CUR_POS = "6D"; const val TGT_POS = "7C"
+    // StatusActive: sensor services set this false when the device behind them
+    // is unreachable — homebridge-miot then reports every reading as 0, which
+    // is indistinguishable from a real reading unless this flag is consulted
+    const val STATUS_ACTIVE = "75"
 }
 
 // HomeKit service type codes
@@ -59,9 +63,11 @@ data class ServerSettings(
     val names: MutableMap<String, String> = mutableMapOf(),
     val groups: MutableList<Group> = mutableListOf(),
     val hidden: MutableList<String> = mutableListOf(),
-    // opaque passthrough — the shelly device list is managed by the server;
-    // round-trip it untouched so app-side saves never corrupt it
+    // opaque passthrough — the shelly device list and the extra HAP bridges
+    // polled for climate readings are managed by the server; round-trip them
+    // untouched so app-side saves never corrupt them
     var shelliesRaw: String = "[]",
+    var pullSensorsRaw: String = "[]",
 )
 
 data class HourForecast(

@@ -955,7 +955,12 @@ fun TileCard(
                 val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
                 val pm25 = tile.sensors.firstOrNull { it.kind == SensorKind.PM25 }
                 val humidity = tile.sensors.firstOrNull { it.kind == SensorKind.HUMIDITY }
-                val pmStatus = pm25?.value?.toDoubleOrNull()?.let { pm25Status(it) }
+                val airq = tile.sensors.firstOrNull { it.kind == SensorKind.AIR_QUALITY }
+                // the device's own air-quality band beats one derived from
+                // PM2.5 — the purifier measures more than particulates
+                val pmStatus = airq?.value?.takeIf { it != "—" }
+                    ?.let { it to airQualityPillColor(it) }
+                    ?: pm25?.value?.toDoubleOrNull()?.let { pm25Status(it) }
                 val tempBand = temp?.value?.toDoubleOrNull()
                     ?.let { tempStatus(it, prefs.comfortTempLow, prefs.comfortTempHigh) }
                 // status-colored icon circle: AQ tiles follow the PM2.5 band,
@@ -1018,7 +1023,8 @@ fun TileCard(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                tempBand?.let { (label, color) -> StatusPill(label, color) }
+                                if (tile.notReporting) StatusPill("No data", OfflineGray)
+                                else tempBand?.let { (label, color) -> StatusPill(label, color) }
                                 humidity?.let { HumidityPill(it, subColor, nameColor) }
                             }
                         }
@@ -1038,12 +1044,18 @@ fun TileCard(
                                 modifier = Modifier.alignByBaseline().padding(start = 5.dp),
                             )
                         }
-                        if (!compact) pmStatus?.let { (label, color) ->
-                            StatusPill(label, color, Modifier.padding(top = 6.dp))
+                        if (!compact) {
+                            if (tile.notReporting) {
+                                StatusPill("No data", OfflineGray, Modifier.padding(top = 6.dp))
+                            } else pmStatus?.let { (label, color) ->
+                                StatusPill(label, color, Modifier.padding(top = 6.dp))
+                            }
                         }
                     }
                     val rest = tile.sensors.filterNot {
-                        it === temp || it === pm25 || (temp != null && it === humidity)
+                        // the air-quality band is already the status pill above
+                        it === temp || it === pm25 || it === airq ||
+                            (temp != null && it === humidity)
                     }
                     if (rest.isNotEmpty()) {
                         Row(
@@ -2005,6 +2017,9 @@ private fun pm25Status(v: Double): Pair<String, Color> = when {
 }
 
 private val BandGreen = Color(0xFF34A853)
+
+// neutral band for a reading the device isn't actually reporting
+private val OfflineGray = Color(0xFF9AA0A6)
 
 // nursery comfort bands, same palette as the PM2.5 bands. The comfy range
 // is user-set (Settings > Baby room comfort, default 18–22 °C); amber
