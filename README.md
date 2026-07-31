@@ -77,6 +77,9 @@ web dashboard always agree.
 | `HAP_PORT` | `51705` | Homebridge's insecure API port |
 | `HAP_PIN` | *(required, no default)* | your Homebridge setup PIN |
 | `WEATHER_LAT`, `WEATHER_LON` | example coordinates | for the weather card (open-meteo, no API key needed) |
+| `TESLAMATE_URL` | *(unset — feature off)* | base URL of a [TeslaMateApi](https://github.com/tobiasehlert/teslamateapi) instance, e.g. `http://127.0.0.1:8081`. Point it at the API itself, not at an auth proxy in front of it. Unset means no Tesla chip, which is what most installs want |
+| `TESLAMATE_TOKEN` | *(none)* | sent as `Authorization: Bearer` if your TeslaMateApi requires it |
+| `TESLAMATE_CAR_ID` | `1` | which car to read, for multi-car TeslaMate setups |
 
 ### Shelly devices (optional)
 

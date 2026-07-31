@@ -90,6 +90,22 @@ data class Weather(
     val hours: List<HourForecast> = emptyList(),
 )
 
+// Model 3 charge, relayed by the dashboard server from TeslaMate on the same
+// host. `state` is TeslaMate's own ("online" / "asleep" / "offline"): anything
+// but online means the reading is last-known rather than live, so the header
+// shows it dimmed with its age instead of implying the car just reported.
+data class Tesla(
+    val battery: Int,
+    val rangeKm: Double?,
+    val pluggedIn: Boolean,
+    val chargingState: String,
+    val state: String,
+    val ts: Long,
+) {
+    val live: Boolean get() = state.equals("online", ignoreCase = true)
+    val charging: Boolean get() = chargingState.equals("charging", ignoreCase = true)
+}
+
 data class Target(val aid: Int, val iid: Int)
 
 fun Any?.asDouble(): Double? = when (this) {

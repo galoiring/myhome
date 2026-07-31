@@ -185,8 +185,25 @@ async function sampleHistory() {
         if (shortType(ch.type) === '23' && typeof ch.value === 'string') name = ch.value;
       }
     }
+    // StatusActive false means the bridge can't reach the device behind that
+    // service; every value it returns is a filler zero. Recording those made a
+    // 22 h purifier outage draw as a confident flat line at 0 instead of a gap,
+    // and left a permanently unplugged heater contributing 2000 zeros.
+    //
+    // Judged per accessory, not just per service: an unreachable heater also
+    // exposes a thermostat service, which carries a temperature but NO
+    // StatusActive of its own — so skipping only the flagged services still let
+    // its 0 °C through under the same series name.
+    const flags = (acc.services || [])
+      .map((svc) => (svc.characteristics || []).find((c) => shortType(c.type) === '75'))
+      .filter(Boolean);
+    if (flags.length && flags.every((c) => !c.value)) continue;
+
     const seen = new Set(); // one sample per kind per accessory
     for (const svc of acc.services || []) {
+      const statusActive = (svc.characteristics || [])
+        .find((c) => shortType(c.type) === '75');
+      if (statusActive && !statusActive.value) continue;
       for (const ch of svc.characteristics || []) {
         const kind = HISTORY_TYPES[shortType(ch.type)];
         if (!kind || seen.has(kind) || typeof ch.value !== 'number') continue;
@@ -209,6 +226,78 @@ async function sampleHistory() {
 }
 setInterval(sampleHistory, HISTORY_SAMPLE_MS);
 setTimeout(sampleHistory, 5000); // first sample shortly after boot
+
+/* ---- Tesla: battery level from TeslaMate running on this same host.
+
+   TeslaMate's own REST companion (TeslaMateApi) is the source, polled over
+   plain HTTP so this file keeps its "no npm dependencies" property — the live
+   MQTT feed would mean pulling in an mqtt client, which is a lot of machinery
+   for one header chip.
+
+   TESLAMATE_URL should point straight at TeslaMateApi, NOT at the Caddy gate
+   in front of it (that gate exists to keep the API off the LAN and wants a
+   basic-auth password). Container IPs move when the stack is recreated, so
+   publish a fixed localhost port for it instead. Absent config = feature off,
+   which is what every install that isn't this house wants. ---- */
+const TESLAMATE_URL = process.env.TESLAMATE_URL || '';
+const TESLAMATE_TOKEN = process.env.TESLAMATE_TOKEN || '';
+const TESLAMATE_CAR_ID = process.env.TESLAMATE_CAR_ID || '1';
+const TESLA_POLL_MS = 60 * 1000;
+let teslaCache = null;
+
+function httpGetJson(target, headers) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(target);
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request(
+      { hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: 'GET', headers },
+      (res) => {
+        let body = '';
+        res.on('data', (d) => (body += d));
+        res.on('end', () => {
+          if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+          try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.setTimeout(8000, () => req.destroy(new Error('timeout')));
+    req.end();
+  });
+}
+
+async function pollTesla() {
+  if (!TESLAMATE_URL) return;
+  try {
+    const headers = TESLAMATE_TOKEN ? { Authorization: 'Bearer ' + TESLAMATE_TOKEN } : {};
+    const j = await httpGetJson(
+      TESLAMATE_URL.replace(/\/$/, '') + '/api/v1/cars/' + TESLAMATE_CAR_ID + '/status',
+      headers
+    );
+    const s = (j.data && j.data.status) || {};
+    const battery = (s.battery_details || {});
+    const charging = (s.charging_details || {});
+    teslaCache = {
+      // usable_battery_level is what the car will actually give you; it drops
+      // below battery_level in the cold, which is when you care most
+      battery: battery.usable_battery_level ?? battery.battery_level ?? null,
+      rangeKm: battery.rated_battery_range ?? null,
+      pluggedIn: !!charging.plugged_in,
+      chargingState: charging.charging_state || '',
+      // "asleep"/"offline" means the reading is last-known, not current — the
+      // app dims the chip rather than implying a sleeping car is reporting
+      state: s.state || '',
+      stateSince: s.state_since || null,
+      ts: Date.now(),
+    };
+  } catch (_) {
+    // leave the previous reading in place; the app ages it via `ts`
+  }
+}
+if (TESLAMATE_URL) {
+  setInterval(pollTesla, TESLA_POLL_MS);
+  setTimeout(pollTesla, 3000);
+}
 
 /* ---- pulled sensors: poll additional local HAP bridges (settings key
    `pullSensors`) for the first temp/humidity they expose and feed the
@@ -431,8 +520,33 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.url === '/api/history' && req.method === 'GET') {
-      json(res, 200, history);
+    // `?hours=N` trims the response to the recent window. The tile sparklines
+    // only draw 24 h but used to pull the whole 7-day ring every 5 minutes and
+    // throw ~86 % of it away; the history sheet still asks for everything.
+    // 204 when the feature isn't configured, so the app can simply not draw
+    // the chip rather than having to special-case an error body
+    if (req.url === '/api/tesla' && req.method === 'GET') {
+      if (!teslaCache) {
+        res.writeHead(204).end();
+        return;
+      }
+      json(res, 200, teslaCache);
+      return;
+    }
+
+    if (req.url.split('?')[0] === '/api/history' && req.method === 'GET') {
+      const hours = Number(new URL(req.url, 'http://x').searchParams.get('hours'));
+      if (!Number.isFinite(hours) || hours <= 0) {
+        json(res, 200, history);
+        return;
+      }
+      const from = Date.now() - hours * 3600 * 1000;
+      const trimmed = {};
+      for (const [k, pts] of Object.entries(history)) {
+        const recent = pts.filter((p) => p[0] >= from);
+        if (recent.length) trimmed[k] = recent;
+      }
+      json(res, 200, trimmed);
       return;
     }
 

@@ -114,6 +114,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -128,6 +129,7 @@ import com.gal.myhome.SliderCtl
 import com.gal.myhome.StepCtl
 import com.gal.myhome.TileKind
 import com.gal.myhome.TileUi
+import com.gal.myhome.R
 import com.gal.myhome.UpdateState
 import com.gal.myhome.YlRef
 import com.gal.myhome.data.CameraCfg
@@ -136,6 +138,7 @@ import com.gal.myhome.data.HourForecast
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
 import com.gal.myhome.data.TileWidth
+import com.gal.myhome.data.Tesla
 import com.gal.myhome.data.Weather
 import com.gal.myhome.data.wmoInfo
 import kotlinx.coroutines.delay
@@ -348,7 +351,7 @@ private fun HeaderRow(
             )
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            if (showWeather) WeatherStrip(ui.weather, ui.indoorTemp, ui.powerW)
+            if (showWeather) WeatherStrip(ui.weather, ui.indoorTemp, ui.powerW, ui.tesla)
         }
         if (ui.offline) {
             Text(
@@ -380,7 +383,7 @@ private fun HeaderRow(
 }
 
 @Composable
-private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null) {
+private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, tesla: Tesla? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -479,6 +482,76 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null) {
                 }
             }
         }
+        tesla?.let { TeslaChip(it) }
+    }
+}
+
+// Model 3 charge, from TeslaMate on the dashboard host. A parked Tesla sleeps
+// within minutes, so most of the time this is a last-known reading rather than
+// a live one — say so (dimmed + age) instead of showing a stale number as
+// though the car just reported it.
+@Composable
+private fun TeslaChip(t: Tesla) {
+    val band = when {
+        t.battery >= 50 -> Color(0xFF34A853)
+        t.battery >= 20 -> Color(0xFFF29900)
+        else -> Color(0xFFD93025)
+    }
+    val dim = !t.live
+    val alpha = if (dim) 0.55f else 1f
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_tesla), null,
+                Modifier.size(17.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+            )
+            Text(
+                "${t.battery}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = band.copy(alpha = alpha),
+            )
+            Text(
+                "%",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+            )
+            // charging beats asleep: a plugged-in car is the thing you want to
+            // see at a glance on the way out of the door
+            if (t.charging || t.pluggedIn) {
+                Icon(
+                    Icons.Rounded.Bolt, null,
+                    Modifier.size(15.dp),
+                    tint = if (t.charging) Color(0xFF34A853)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                )
+            } else if (dim) {
+                Text(
+                    agoLabel(t.ts),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                )
+            }
+        }
+    }
+}
+
+// compact relative age for readings that may not be current
+private fun agoLabel(ts: Long): String {
+    if (ts <= 0L) return ""
+    val mins = ((System.currentTimeMillis() - ts) / 60000L).coerceAtLeast(0)
+    return when {
+        mins < 60 -> "${mins}m"
+        mins < 60 * 48 -> "${mins / 60}h"
+        else -> "${mins / 1440}d"
     }
 }
 

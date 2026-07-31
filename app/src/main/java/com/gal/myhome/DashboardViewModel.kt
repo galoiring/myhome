@@ -28,6 +28,7 @@ import com.gal.myhome.data.SortMode
 import com.gal.myhome.data.Svc
 import com.gal.myhome.data.T
 import com.gal.myhome.data.Target
+import com.gal.myhome.data.Tesla
 import com.gal.myhome.data.UpdateClient
 import com.gal.myhome.data.UpdateInfo
 import com.gal.myhome.data.Weather
@@ -144,6 +145,8 @@ data class UiState(
     val weather: Weather? = null,
     val indoorTemp: Double? = null,
     val powerW: Double? = null,
+    // null until the server reports one (or forever, if it has no TeslaMate)
+    val tesla: Tesla? = null,
     // epoch ms of the last doorbell press, 0 = never
     val ringAt: Long = 0L,
     val offline: Boolean = false,
@@ -151,6 +154,10 @@ data class UiState(
 )
 
 private const val TOUCH_HOLD_MS = 5000L
+
+// Yeelight LAN quota is ~60 commands/minute per bulb; a manual toggle or drag
+// still goes out immediately, this only paces the background state reads
+private const val YL_POLL_MS = 12_000L
 
 sealed interface UpdateState {
     data object Idle : UpdateState
@@ -196,6 +203,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             launch { pollLoop() }
             launch { weatherLoop() }
             launch { historyLoop() }
+            launch { teslaLoop() }
             // prefs changes (rooms, sort, yeelights, cameras) reshape tiles immediately
             launch { prefs.collect { if (ui.loaded) rebuild(ui.offline) } }
             launch { checkForUpdate() }
@@ -255,14 +263,23 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     val a = async { api.accessories() }
                     val s = async { try { api.shelly() } catch (_: Exception) { shellyDevs } }
                     val d = async { try { api.doorbellRing() } catch (_: Exception) { ringAt } }
-                    // Yeelights are independent of the server; state() returns null on error
-                    val y = prefs.value.yeelights.map { cfg ->
+                    // Yeelights are independent of the server; state() returns
+                    // null on error. They get a slower cadence than the HAP
+                    // poll: each read is a fresh TCP connection against a
+                    // device quota of ~60 commands/minute, so polling every
+                    // 3s spent a third of the budget just asking the bulb how
+                    // it was — and these bulbs wedge when pushed
+                    val pollYl = System.currentTimeMillis() - lastYlAt >= YL_POLL_MS
+                    val y = if (pollYl) prefs.value.yeelights.map { cfg ->
                         async { cfg.ip to ylClient.state(cfg.ip) }
-                    }
+                    } else emptyList()
                     accs = a.await()
                     shellyDevs = s.await()
                     ringAt = d.await()
-                    ylStates = y.awaitAll().toMap()
+                    if (pollYl) {
+                        ylStates = y.awaitAll().toMap()
+                        lastYlAt = System.currentTimeMillis()
+                    }
                 }
                 if (!settingsLoaded.value) refreshServerSettings()
                 pruneOverrides()
@@ -283,6 +300,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var lastWeatherAt = 0L
 
+    @Volatile
+    private var lastYlAt = 0L
+
     private suspend fun fetchWeatherNow() {
         try {
             ui = ui.copy(weather = api.weather())
@@ -300,6 +320,16 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun history(): Map<String, List<Pair<Long, Double>>> = api.history()
 
+    // the server refreshes its own TeslaMate copy every 60s, so asking more
+    // often than that only re-reads the same cache
+    private suspend fun teslaLoop() {
+        while (true) {
+            api.baseUrl = prefs.value.serverUrl
+            ui = ui.copy(tesla = api.tesla())
+            delay(60 * 1000L)
+        }
+    }
+
     // periodic snapshot of the same history the HistorySheet fetches on
     // demand — feeds the always-visible sparklines on sensor tiles
     private suspend fun historyLoop() {
@@ -310,7 +340,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             }
             api.baseUrl = prefs.value.serverUrl
             try {
-                histories = api.history()
+                histories = api.history(hours = 24)
             } catch (_: Exception) { /* older server — retry next cycle */ }
             delay(5 * 60 * 1000L)
         }
@@ -448,11 +478,20 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun editSettings(edit: (ServerSettings) -> Unit) {
+        // apply locally first so the tile reacts instantly…
         edit(serverSettings)
         rebuild(ui.offline)
         viewModelScope.launch {
             try {
-                api.saveSettings(serverSettings)
+                // …but save onto a *fresh* copy where possible: the in-memory
+                // one was fetched at startup and may be hours old, so posting
+                // it wholesale reverts anything another client changed since.
+                // If the refetch fails, keep the already-edited local copy —
+                // re-running `edit` on it would double a non-idempotent edit
+                // such as createGroup
+                val fresh = try { api.settings().also(edit) } catch (_: Exception) { serverSettings }
+                serverSettings = fresh
+                api.saveSettings(fresh)
                 serverSettings = api.settings()
             } catch (_: Exception) { }
             rebuild(ui.offline)
@@ -491,7 +530,12 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             val key = "a:${acc.origName}"
             for (svc in acc.services) {
                 if (svc.type != SVC.HC) continue
+                // an unreachable thermostat reports 0 °C, and the header's
+                // "inside" reading is whichever one comes first in the
+                // accessory list — so a dead unit could speak for the house
+                if (svc.ch(T.STATUS_ACTIVE)?.let { !it.value.asBool() } == true) continue
                 val v = svc.ch(T.CUR_TEMP)?.value.asDouble() ?: continue
+                if (v == 0.0) continue
                 if (any == null) any = v
                 if (visible == null && key !in hiddenKeys) visible = v
             }

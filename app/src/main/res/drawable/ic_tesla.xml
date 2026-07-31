@@ -1,0 +1,15 @@
+<!-- Tesla "T" mark: shoulder arc above a stem. Drawn as paths rather than
+     shipped as a bitmap so it tints with the theme like every other header
+     icon. Uses currentColor via android:tint at the call site. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,7.4c-2.5,0 -4.9,0.35 -7.2,1.05l1.45,2.5c1.55,-0.45 3.15,-0.72 4.8,-0.8l0,10.35h1.9l0,-10.35c1.65,0.08 3.25,0.35 4.8,0.8l1.45,-2.5C16.9,7.75 14.5,7.4 12,7.4z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,5.55c2.85,0 5.6,0.47 8.05,1.35l0.9,-1.55C18.3,4.2 15.2,3.65 12,3.65c-3.2,0 -6.3,0.55 -8.95,1.7l0.9,1.55C6.4,6.02 9.15,5.55 12,5.55z" />
+</vector>

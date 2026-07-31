@@ -45,10 +45,13 @@ something it doesn't know.**
 
 ## Phase 0 — correctness debt (do first)
 
-Each item below is a verified defect, not a hypothesis. 0.1 and 0.2 cause
-silently wrong data and are the priority.
+Each item below is a verified defect, not a hypothesis.
 
-### 0.1 Settings edits clobber other clients  ← highest value
+**All of Phase 0 shipped in v1.1.14 (2026-07-31)**, along with 3.8. Kept here
+with the diagnosis intact, because the reasoning is what makes the fixes
+reviewable later.
+
+### 0.1 Settings edits clobber other clients — SHIPPED v1.1.14
 `serverSettings` is fetched once in `init` (DashboardViewModel.kt:195) and
 never refreshed. `editSettings` (:450) mutates that possibly-hours-old copy
 and POSTs the whole document, so any change made meanwhile on the web
@@ -62,6 +65,12 @@ The README promises the opposite ("the app and web dashboard always
 agree"). The server-side merge added on 2026-07-26 does **not** cover this
 — the app does send `names`/`hidden`, just stale values.
 
+Priority note (2026-07-31): this was originally called the highest-value item
+on the assumption that the app and the web dashboard both get used. They
+don't — the Android panel is the only client of this backend, and the phones
+in the house are HomeKit. That makes this latent rather than active, and it
+shipped mainly because the fix is three lines.
+
 - Fix: re-read `/api/settings` immediately before applying an edit, apply
   the mutation to the fresh copy, then POST. Cheap and sufficient at this
   scale (single-writer-at-a-time, human speed).
@@ -69,7 +78,7 @@ agree"). The server-side merge added on 2026-07-26 does **not** cover this
   `historyLoop`) so a rename made elsewhere shows up without a restart.
 - Effort: S.
 
-### 0.2 History records unreachable devices as real zeros
+### 0.2 History records unreachable devices as real zeros — SHIPPED v1.1.14
 `sampleHistory` (server.js:189) stores any numeric temp/humidity/PM2.5 with
 no `StatusActive` check and no hidden-device filter. Measured on the live
 `history.json`:
@@ -84,13 +93,16 @@ So the Air Quality sparkline draws a confident flat line through a
 history, not the live characteristic, so the falsehood is baked into the
 file.
 
-- Fix: skip the sample when the owning service's `StatusActive` (`75`) is
-  false. Server-side twin of the app-side fix.
-- Consider also skipping hidden accessories, or at least not letting them
-  create series.
+- Fix: skip the sample when `StatusActive` (`75`) is false — judged **per
+  accessory, not per service**. The first attempt checked only the service
+  carrying the reading, and `Heater|temp` kept recording zeros: an unreachable
+  heater also exposes a *thermostat* service, which carries a temperature but
+  no `StatusActive` of its own, so it filled the same series straight back in.
+  If any service on an accessory reports the flag and all of them are false,
+  skip the whole accessory. Same semantics as the app's `notReporting`.
 - Effort: S. Pairs with 4.2 (which makes the resulting gaps render honestly).
 
-### 0.3 The whole 7-day history is fetched every 5 min for 24 h sparklines
+### 0.3 The whole 7-day history is fetched every 5 min for 24 h sparklines — SHIPPED v1.1.14
 `historyLoop` (DashboardViewModel.kt:305) pulls the full dump — 307 KB
 today, growing with every sensor added — and the tiles then discard ~86 %
 of it client-side via the `dayAgo` filter. `/api/history` (server.js:434)
@@ -101,7 +113,7 @@ takes no range parameter.
   clients keep working.
 - Effort: S.
 
-### 0.4 Yeelight polling runs at a third of the device quota
+### 0.4 Yeelight polling runs at a third of the device quota — SHIPPED v1.1.14
 `YeelightClient`'s own header says *"the device quota is ~60
 commands/minute"*, and `pollLoop` (DashboardViewModel.kt:259) opens a fresh
 TCP connection to every bulb every `pollSeconds` (default 3 s) — 20/min per
@@ -115,7 +127,7 @@ thin headroom.
   not per frame. Verified.
 - Effort: S.
 
-### 0.5 `indoorTemp()` has no validity check — latent
+### 0.5 `indoorTemp()` has no validity check — SHIPPED v1.1.14
 `indoorTemp()` (DashboardViewModel.kt:486) takes the first thermostat's
 `CurrentTemperature` with no `StatusActive` or sanity test. It happens to
 be right today only because the AC precedes the Heater in the accessories
@@ -249,6 +261,50 @@ frame.
 Push baby-room alerts (3.2) to phones when nobody's near the panel — e.g.
 via a self-hosted ntfy on the Pi. Only worth it once 3.2 proves useful.
 
+### 3.8 Tesla battery in the header — SHIPPED v1.1.14  ← requested
+TeslaMate already runs on the same Orange Pi, so the panel can show the Model
+3's charge next to the weather without touching Tesla's API or the cloud.
+
+Verified live on the Pi (`teslamate-mosquitto`, topics under
+`teslamate/cars/1/`):
+
+| topic | sample |
+|---|---|
+| `battery_level` | `79` |
+| `plugged_in` | `false` |
+| `charging_state` | `Disconnected` |
+| `rated_battery_range_km` | `312.42` |
+| `state` | `online` |
+| `time_to_full_charge` | `0.0` |
+
+Two routes to it, and the choice matters:
+
+- **`teslamate-api`** (the `tobiasehlert/teslamateapi` container, reachable on
+  `127.0.0.1:8080` behind a Caddy basic-auth gate, with a bearer token in that
+  container's env — do **not** copy the token into this repo, it is public).
+  Plain HTTP, which `server.js` already speaks.
+- **MQTT** on `127.0.0.1:1883` — the live push path, but the `mqtt` package
+  would be `server.js`'s **first npm dependency ever** (it is currently pure
+  Node built-ins: http/https/fs/path/child_process/url). Not worth losing that
+  property for one header chip.
+
+So: poll the REST API on the existing weather-ish cadence, cache it, and serve
+`GET /api/tesla` → `{ battery, pluggedIn, chargingState, rangeKm, state, ts }`.
+Both listeners are localhost-only, so this stays a LAN feature — no Tesla
+credentials in the app, and nothing new exposed on the network.
+
+App side: a chip in `WeatherStrip` (DashboardScreen.kt:351), which already
+carries indoor temp and power draw. Battery % + a Tesla mark, tinted like the
+other status bands (green / amber / red), with a bolt when `plugged_in`.
+
+Two things to get right:
+- **Honesty (see 4.1):** a sleeping Tesla stops reporting, and a stale 79 %
+  shown as if live is exactly the failure this plan exists to remove. Use
+  `state` (`online` / `asleep` / `offline`) plus the reading's age — dim the
+  chip and show the age when the car is asleep rather than implying it's live.
+- **Asset:** needs a Tesla mark in the drawables. A generic car glyph avoids
+  the trademark question entirely if this ever goes beyond this house.
+
 ---
 
 ## Phase 4 — Trust & legibility (added 2026-07-26)
@@ -332,15 +388,75 @@ density (and consider a floor size in the night theme, per 1.5).
 A ▲/▼ delta computed across a fake-zero gap is wrong in a way that looks
 authoritative. Land 0.2 + 4.2 first, then 1.3 becomes safe.
 
+### 5.5 Key tile config by device identity, not display name
+Every settings key is the Homebridge **display name** — `a:Mi Air Purifier`,
+`a:מזגן AC`. Rename a device and all of its config orphans at once: hidden
+state, room, size, order, custom name.
+
+Live example, on the wall today: `מזגן AC` was renamed to `AC`, so
+`"a:מזגן AC"` sits uselessly in `hidden` while the tile is now `a:AC` — **a
+stray AC tile appeared on the panel**, and its `WHOLE_HOME` room and `LARGE`
+size defaults quietly stopped applying. It has happened before, too: Prefs.kt
+still carries `"a:Ceeling light" to Room.BEDROOM, // pre-rename spelling`.
+
+HAP already serves a stable serial (characteristic `30`) for every accessory
+here — the AC's is `ac-failover-1`, unchanged straight through the rename;
+purifier `583824103`, nursery sensor `blt.1.1pe9vdb194k03`, bulbs `a01f7d` /
+`4dc114`. Only `HomebridgeLogCleaner` (hidden anyway) and the synthetic
+`Living Room` sensor lack one, and the latter is minted by our own server.js
+so it can be given one.
+
+- Key on serial, with a one-time migration mapping existing name-keyed
+  settings across. Keep the name as the fallback for accessories with no
+  usable serial.
+- Effort: M — the migration is the risky part and wants a real-device test,
+  which is why it didn't ride along with v1.1.14.
+
+### 5.6 Device health / outage history view
+Three times in the week of 2026-07-25 the question was "why isn't X showing",
+and each time answering it needed an SSH session into the Pi. The data was
+already there: `history.json` holds 7 days of 5-minute samples, which is how
+both purifier outages (21.6 h and 6.0 h) and the exact minute the Living Room
+feed died were dated after the fact.
+
+- A Health screen listing every sensor: last good reading, current age, and a
+  7-day uptime bar. Mostly aggregation over data already stored.
+- 4.1 makes a single tile honest about *now*; this shows the **pattern**.
+  "The purifier has dropped twice this week" is a different signal from "the
+  purifier is offline" — the first says it's the network, not a fluke.
+- Now that 0.2 stops writing filler zeros, a gap in a series *is* the outage
+  record, so this gets easier rather than harder.
+- Effort: M.
+
+### 5.7 Not doing: automated Pi backups — declined 2026-07-31
+Raised because nothing on the Pi is backed up: single 29.8 GB **SD** card,
+75 % full, 202 days uptime, no backup job of any kind, and Homebridge's
+pairing state has already broken once on this machine
+(`AccessoryInfo.*.json.broken-20260502`, `.pre-restore-20260529`).
+
+Declined — Homebridge backs itself up to the dev Mac, and the rest is on
+GitHub. Two things genuinely aren't covered by either, noted so the decision
+stays an informed one rather than an assumption:
+
+- `hb-dashboard/settings.json` — gitignored **by design** (it's personal
+  runtime state), so GitHub will never hold it. It is the only copy of every
+  tile name, group, hidden device and `pullSensors` entry.
+- TeslaMate's Postgres volume — the entire drive/charge history of the car.
+
+An in-app *Export / Restore settings* pair would cover the first one from the
+panel itself, without any Pi-side cron.
+
+
 ---
 
 ## Suggested order
 
-1. **0.1 + 0.2** — silent wrong data, both small, both server-adjacent.
-   0.3 rides along with 0.2 since it's the same endpoint.
+1. ~~**0.1 + 0.2 + 0.3 + 0.4 + 0.5**~~ — all shipped v1.1.14, with 3.8.
 2. **4.2 then 4.1** — completes the outage work: gaps render as gaps, stale
-   readings admit their age. 0.2 is a prerequisite for 4.2.
-3. **0.5 + 0.4** — cheap robustness; 0.5 is nearly a one-liner.
+   readings admit their age. 0.2 is done, so 4.2 is unblocked — and there are
+   now real gaps in `history.json` waiting to be drawn correctly.
+3. **5.5** — the stray "AC" tile is a live symptom; do it before more tiles
+   accumulate settings to migrate.
 4. **4.3 + 5.1** — the two biggest day-to-day UX wins, app-only, no server
    changes. 5.1 is mostly wiring to existing ViewModel functions.
 5. **5.2** — before any further layout work, and before 1.3/1.4.

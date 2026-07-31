@@ -149,9 +149,30 @@ class HomeApi {
         JSONObject(getBody("/api/doorbell")).optLong("ring", 0L)
     }
 
+    /** Model 3 charge via the server's TeslaMate relay; null when the server
+     * has no TeslaMate configured (204) or is too old to know the route. */
+    suspend fun tesla(): Tesla? = withContext(Dispatchers.IO) {
+        val body = try { getBody("/api/tesla") } catch (_: Exception) { return@withContext null }
+        if (body.isBlank()) return@withContext null
+        val o = JSONObject(body)
+        val battery = o.optInt("battery", -1)
+        if (battery < 0) return@withContext null
+        Tesla(
+            battery = battery,
+            rangeKm = o.optDouble("rangeKm").takeIf { !it.isNaN() },
+            pluggedIn = o.optBoolean("pluggedIn", false),
+            chargingState = o.optString("chargingState", ""),
+            state = o.optString("state", ""),
+            ts = o.optLong("ts", 0L),
+        )
+    }
+
     // "<accessory name>|<temp|humidity|pm25>" -> [(epoch ms, value)]
-    suspend fun history(): Map<String, List<Pair<Long, Double>>> = withContext(Dispatchers.IO) {
-        val o = JSONObject(getBody("/api/history"))
+    // hours > 0 trims to a recent window server-side; the tile sparklines only
+    // need 24 h and used to download the whole 7-day ring every 5 minutes
+    suspend fun history(hours: Int = 0): Map<String, List<Pair<Long, Double>>> = withContext(Dispatchers.IO) {
+        val path = if (hours > 0) "/api/history?hours=$hours" else "/api/history"
+        val o = JSONObject(getBody(path))
         buildMap {
             o.keys().forEach { k ->
                 val arr = o.getJSONArray(k)
