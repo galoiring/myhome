@@ -117,8 +117,15 @@ data class Prefs(
     val comfortTempLow: Int = 18,
     val comfortTempHigh: Int = 22,
     // during night hours the theme goes dark even if set to Light/System —
-    // separately toggleable so the Theme control isn't mysteriously "broken"
+    // separately toggleable so the Theme control isn't mysteriously "broken",
+    // and independent of nightMode: wanting a dark theme after dark doesn't
+    // mean wanting the screen blanked
     val nightDarkTheme: Boolean = true,
+    // cut the backlight entirely at screenOffHour by locking the tablet.
+    // Night mode only blanks the UI — a wall panel still glows all night.
+    // Off by default: it needs a device-admin grant the user has to give.
+    val screenOffEnabled: Boolean = false,
+    val screenOffHour: Int = 0,
     val rooms: Map<String, Room> = emptyMap(),
     val yeelights: List<YeelightCfg> = emptyList(),
     val cameras: List<CameraCfg> = emptyList(),
@@ -163,6 +170,8 @@ class PrefsRepo(private val context: Context) {
         val comfortTempLow = intPreferencesKey("comfort_temp_low")
         val comfortTempHigh = intPreferencesKey("comfort_temp_high")
         val nightDarkTheme = booleanPreferencesKey("night_dark_theme")
+        val screenOffEnabled = booleanPreferencesKey("screen_off_enabled")
+        val screenOffHour = intPreferencesKey("screen_off_hour")
         val rooms = stringPreferencesKey("rooms")
         val yeelights = stringPreferencesKey("yeelights")
         val cameras = stringPreferencesKey("cameras")
@@ -258,6 +267,8 @@ class PrefsRepo(private val context: Context) {
             comfortTempLow = p[K.comfortTempLow] ?: 18,
             comfortTempHigh = p[K.comfortTempHigh] ?: 22,
             nightDarkTheme = p[K.nightDarkTheme] ?: true,
+            screenOffEnabled = p[K.screenOffEnabled] ?: false,
+            screenOffHour = p[K.screenOffHour] ?: 0,
             rooms = parseRooms(p[K.rooms]),
             yeelights = parseYeelights(p[K.yeelights]),
             cameras = parseCameras(p[K.cameras]),
@@ -288,6 +299,8 @@ class PrefsRepo(private val context: Context) {
             p[K.comfortTempLow] = prefs.comfortTempLow
             p[K.comfortTempHigh] = prefs.comfortTempHigh
             p[K.nightDarkTheme] = prefs.nightDarkTheme
+            p[K.screenOffEnabled] = prefs.screenOffEnabled
+            p[K.screenOffHour] = prefs.screenOffHour
             p[K.rooms] = JSONObject(prefs.rooms.mapValues { it.value.name }).toString()
             p[K.yeelights] = JSONArray(prefs.yeelights.map {
                 JSONObject().put("ip", it.ip).put("name", it.name)

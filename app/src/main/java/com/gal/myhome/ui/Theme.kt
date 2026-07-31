@@ -58,11 +58,19 @@ private fun accentSchemes(accent: Accent) = when (accent) {
 }
 
 @Composable
-fun MyHomeTheme(prefs: Prefs, forceDark: Boolean = false, content: @Composable () -> Unit) {
+fun MyHomeTheme(
+    prefs: Prefs,
+    forceDark: Boolean = false,
+    // the caller can supply the system's night state instead of letting Compose
+    // read it from the configuration — a kiosk-style panel can miss the config
+    // change that would normally drive isSystemInDarkTheme() (see MainActivity)
+    systemDark: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
     // forceDark: the night window overrides the theme choice — a wall tablet
     // woken at 3am should never blast the daytime light theme
     val dark = forceDark || when (prefs.themeMode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.SYSTEM -> systemDark
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- force-lock only: enough for DevicePolicyManager.lockNow(), which is how
+     the night schedule turns the panel's screen off. No wipe, no password
+     policy, no camera/keyguard control. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>

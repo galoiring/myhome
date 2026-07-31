@@ -1,6 +1,8 @@
 package com.gal.myhome.ui
 
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,16 +65,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gal.myhome.BuildConfig
 import com.gal.myhome.DashboardViewModel
+import com.gal.myhome.ScreenLock
 import com.gal.myhome.UpdateState
 import com.gal.myhome.TileUi
 import com.gal.myhome.data.Accent
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.ClockFormat
 import com.gal.myhome.data.Density
+import com.gal.myhome.data.Prefs
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
 import com.gal.myhome.data.TileWidth
@@ -241,11 +246,21 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
             item {
                 SwitchRow(
                     "Night mode",
-                    "Black screen on a schedule; tap to wake for a minute",
+                    "Black screen during night hours; tap to wake for a minute",
                     prefs.nightMode,
                 ) { vm.updatePrefs(prefs.copy(nightMode = it)) }
             }
-            if (prefs.nightMode) {
+            item {
+                SwitchRow(
+                    "Dark theme at night",
+                    "During night hours, override the Theme choice with dark",
+                    prefs.nightDarkTheme,
+                ) { vm.updatePrefs(prefs.copy(nightDarkTheme = it)) }
+            }
+            // the hours drive both switches above, so they stay visible as long
+            // as either one wants them — previously they hid with Night mode,
+            // which left "Dark theme at night" pointing at an unseen schedule
+            if (prefs.nightMode || prefs.nightDarkTheme) {
                 item {
                     HourStepperRow("From", prefs.nightStartHour) {
                         vm.updatePrefs(prefs.copy(nightStartHour = it))
@@ -256,14 +271,8 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                         vm.updatePrefs(prefs.copy(nightEndHour = it))
                     }
                 }
-                item {
-                    SwitchRow(
-                        "Dark theme at night",
-                        "During night hours, override the Theme choice with dark",
-                        prefs.nightDarkTheme,
-                    ) { vm.updatePrefs(prefs.copy(nightDarkTheme = it)) }
-                }
             }
+            item { ScreenOffRows(vm, prefs) }
 
             /* ---- room comfort band ---- */
             item { SectionHeader("Room comfort") }
@@ -710,6 +719,65 @@ private fun LabeledSeg(
                     icon = {},
                     label = { Text(opt, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
                 )
+            }
+        }
+    }
+}
+
+// "Turn the screen off at night" — the toggle plus the one-time device-admin
+// grant it needs. Android gives an ordinary app no other way to cut the
+// backlight, so the permission prompt is unavoidable; keep it explained and
+// revocable from here rather than sending the user hunting in system settings.
+@Composable
+private fun ScreenOffRows(vm: DashboardViewModel, prefs: Prefs) {
+    val context = LocalContext.current
+    var adminActive by remember { mutableStateOf(ScreenLock.canLock(context)) }
+    val grant = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { adminActive = ScreenLock.canLock(context) }
+
+    Column {
+        SwitchRow(
+            "Turn the screen off at night",
+            "Locks the tablet at the hour below. Night mode only blanks the UI — the backlight stays lit until morning.",
+            prefs.screenOffEnabled,
+        ) { vm.updatePrefs(prefs.copy(screenOffEnabled = it)) }
+
+        if (prefs.screenOffEnabled) {
+            HourStepperRow("Off at", prefs.screenOffHour) {
+                vm.updatePrefs(prefs.copy(screenOffHour = it))
+            }
+            if (adminActive) {
+                Row(
+                    Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Ready — the panel locks itself at %02d:00 and needs unlocking in the morning."
+                            .format(prefs.screenOffHour),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        ScreenLock.revoke(context)
+                        adminActive = false
+                    }) { Text("Revoke") }
+                }
+            } else {
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Text(
+                        "Needs permission: Android only lets an app turn the screen off if it is " +
+                            "registered as a device admin. My Home requests the screen-lock policy " +
+                            "and nothing else — it cannot wipe the tablet or change your password.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { grant.launch(ScreenLock.grantIntent(context)) }) {
+                        Text("Grant permission")
+                    }
+                }
             }
         }
     }

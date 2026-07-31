@@ -1,5 +1,6 @@
 package com.gal.myhome
 
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -18,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowInsetsCompat
@@ -80,8 +83,43 @@ private fun App(vm: DashboardViewModel = viewModel()) {
         }
     }
     var wokenAt by rememberSaveable { mutableLongStateOf(0L) }
-    val inNight = prefs.nightMode && inNightWindow(prefs, now)
+    // the time window itself, separate from what each feature does with it:
+    // "dark theme at night" and "blank the screen at night" are independent
+    // switches, so gating the theme on nightMode made the dark-theme toggle
+    // silently do nothing whenever blanking was turned off
+    val nightHours = inNightWindow(prefs, now)
+    val inNight = prefs.nightMode && nightHours
     val showNight = inNight && (now.time - wokenAt > NIGHT_WAKE_MS)
+
+    // Compose normally learns about the system light/dark switch from a
+    // configuration change, but this panel sits in the foreground for weeks and
+    // was only picking the change up when it was force-stopped and reopened.
+    // Re-reading the activity's own configuration on the 10s tick means a
+    // missed notification corrects itself within one tick instead of never.
+    val context = LocalContext.current
+    val systemDark = remember(now) {
+        context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+    }
+
+    // Screen off at night: night mode only blanks the UI, so the backlight is
+    // still lit until morning. Locking the tablet is the only way an ordinary
+    // app can actually cut it. Once per calendar day — waking the panel at 3am
+    // should not be met with it locking itself again ten seconds later.
+    var lockedOnDay by rememberSaveable { mutableIntStateOf(-1) }
+    LaunchedEffect(now, prefs.screenOffEnabled, prefs.screenOffHour) {
+        if (!prefs.screenOffEnabled) return@LaunchedEffect
+        val cal = Calendar.getInstance().apply { time = now }
+        val today = cal.get(Calendar.DAY_OF_YEAR)
+        if (lockedOnDay == today) return@LaunchedEffect
+        if (cal.get(Calendar.HOUR_OF_DAY) != prefs.screenOffHour) return@LaunchedEffect
+        val activity = view.context as ComponentActivity
+        if (!ScreenLock.canLock(activity)) return@LaunchedEffect
+        lockedOnDay = today
+        // KEEP_SCREEN_ON would pull the screen straight back on after the lock
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        ScreenLock.lockNow(activity)
+    }
 
     LaunchedEffect(prefs.keepScreenOn, showNight, inNight) {
         val window = (view.context as ComponentActivity).window
@@ -112,7 +150,11 @@ private fun App(vm: DashboardViewModel = viewModel()) {
         }
     }
 
-    MyHomeTheme(prefs, forceDark = inNight && prefs.nightDarkTheme) {
+    MyHomeTheme(
+        prefs,
+        forceDark = nightHours && prefs.nightDarkTheme,
+        systemDark = systemDark,
+    ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surface,

@@ -1,6 +1,6 @@
 {
-  "versionCode": 31,
-  "versionName": "1.1.12",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.12/app-release.apk",
-  "notes": "Arbel's Room and Living Room climate tiles stack into one column (both show their trend graph), and sparse rows now merge into full-width rows instead of floating centered with big margins."
+  "versionCode": 32,
+  "versionName": "1.1.13",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.13/app-release.apk",
+  "notes": "Offline devices no longer show made-up readings (a dead purifier showed a green 0 ug/m3); the Air Quality tile shows its actual band again; the Living Room climate tile stops vanishing when you rename a tile; dark theme follows the clock and the system without a restart; new Settings option to turn the tablet's screen off at night."
 }
