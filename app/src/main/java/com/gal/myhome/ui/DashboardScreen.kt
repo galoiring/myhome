@@ -857,8 +857,10 @@ fun TileCard(
     val onTile = if (dark) tint.tileDark else tint.tileLight
     val onContent = if (dark) tint.contentDark else tint.contentLight
     // glass translucency — subtle enough that legibility from across the room
-    // isn't hurt, just enough to let the ambient background blobs show through
-    val glassAlpha = 0.90f
+    // isn't hurt, just enough to let the ambient background blobs show through.
+    // Light mode can afford a touch more now that the untinted fill stepped up
+    // to surfaceContainerHigh: more of the ambient wash reads through the pane.
+    val glassAlpha = if (dark) 0.90f else 0.86f
     val bg by animateColorAsState(
         (when {
             tinted -> onTile
@@ -889,8 +891,13 @@ fun TileCard(
     // is only a mode switch. The tile's own accent is just as unmistakable.
     val segAccent = if (dark) null else tint.iconCircle
     val nameColor = if (tinted) onContent else MaterialTheme.colorScheme.onSurface
-    val subColor = if (tinted) onContent.copy(alpha = .75f)
-    else MaterialTheme.colorScheme.onSurfaceVariant
+    // sub-labels carry real information — "On · 13 W", "Purifying", "4% open"
+    // — but sat at .75 alpha on a pale tint, which is under the contrast a wall
+    // panel needs at two or three metres. Raised, and more so on light where
+    // the tints are palest.
+    val subColor = if (tinted) onContent.copy(alpha = if (dark) .82f else .92f)
+    else if (dark) MaterialTheme.colorScheme.onSurfaceVariant
+    else MaterialTheme.colorScheme.onSurface.copy(alpha = .72f)
 
     // sensor tiles open their 24h history instead of toggling
     val opensHistory = tile.kind == TileKind.SENSOR && !tile.canToggle
@@ -903,6 +910,17 @@ fun TileCard(
     )
     val glowBrush = remember(tint, dark) {
         Brush.radialGradient(listOf(tint.iconCircle.copy(alpha = if (dark) 0.30f else 0.22f), Color.Transparent))
+    }
+    // top-edge highlight that makes the card read as glass rather than paint;
+    // stronger on light, where there's no lit hairline to do the job
+    val sheenBrush = remember(dark) {
+        // falls off fast and high: a highlight on the top edge, not a wash over
+        // the card. Anything slower lightens the background behind the title
+        // and gives back the contrast the sub-label fix just won.
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = if (dark) 0.07f else 0.40f),
+            0.28f to Color.Transparent,
+        )
     }
 
     // where the card sits on screen — the history popup grows out of this rect
@@ -1030,6 +1048,11 @@ fun TileCard(
         if (tinted) {
             Box(Modifier.fillMaxSize().background(glowBrush))
         }
+        // specular sheen: the light catching the top of a pane of glass. Dark
+        // mode gets this free from its white hairline border reading as a lit
+        // edge; on light the same hairline is invisible, so the sheen has to be
+        // drawn. Falls off by the middle of the card so it never touches text.
+        Box(Modifier.fillMaxSize().background(sheenBrush))
         // a short sensor tile (Half height) has no room for the dedicated
         // trend slot the tall branch gets — anchor the 24h sparkline to the
         // tile floor instead, behind the hero reading
