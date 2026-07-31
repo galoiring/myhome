@@ -1,6 +1,6 @@
 {
-  "versionCode": 36,
-  "versionName": "1.1.17",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.17/app-release.apk",
-  "notes": "Light mode legibility: tile sub-labels ('On \u00b7 13 W', 'Purifying', '4% open') were below the contrast a wall panel needs at a few metres - they now read properly. Tiles also pick up the glass treatment the dark theme already had: a touch more translucency so the ambient wash shows through, and a specular highlight along the top edge."
+  "versionCode": 37,
+  "versionName": "1.1.18",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.18/app-release.apk",
+  "notes": "The single house-wide 'inside' temperature is gone from the header - every room has its own sensor tile, so it was a worse copy of information already on the wall. The freed space goes to the Tesla block, now roughly double the size with a much larger car and the cabin temperature on a second line."
 }

@@ -277,7 +277,12 @@ async function pollTesla() {
     const s = (j.data && j.data.status) || {};
     const battery = (s.battery_details || {});
     const charging = (s.charging_details || {});
+    const climate = (s.climate_details || {});
     teslaCache = {
+      // cabin temperature — last reported, same as everything else here: the
+      // car stops updating it the moment it goes to sleep
+      insideTemp: typeof climate.inside_temp === 'number' ? climate.inside_temp : null,
+      outsideTemp: typeof climate.outside_temp === 'number' ? climate.outside_temp : null,
       // usable_battery_level is what the car will actually give you; it drops
       // below battery_level in the cold, which is when you care most
       battery: battery.usable_battery_level ?? battery.battery_level ?? null,

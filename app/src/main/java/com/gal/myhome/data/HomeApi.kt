@@ -160,6 +160,7 @@ class HomeApi {
         Tesla(
             battery = battery,
             rangeKm = o.optDouble("rangeKm").takeIf { !it.isNaN() },
+            insideTemp = o.optDouble("insideTemp").takeIf { !it.isNaN() },
             pluggedIn = o.optBoolean("pluggedIn", false),
             chargingState = o.optString("chargingState", ""),
             state = o.optString("state", ""),

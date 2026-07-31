@@ -143,7 +143,6 @@ data class TileUi(
 data class UiState(
     val tiles: List<TileUi> = emptyList(),
     val weather: Weather? = null,
-    val indoorTemp: Double? = null,
     val powerW: Double? = null,
     // null until the server reports one (or forever, if it has no TeslaMate)
     val tesla: Tesla? = null,
@@ -507,7 +506,6 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         val tiles = buildTiles()
         ui = ui.copy(
             tiles = tiles,
-            indoorTemp = indoorTemp(),
             powerW = totalPowerW(),
             ringAt = ringAt,
             offline = offline,
@@ -520,27 +518,6 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private fun totalPowerW(): Double? {
         if (shellyDevs.isEmpty()) return null
         return shellyDevs.sumOf { d -> d.comps.sumOf { if (it.state) it.apower else 0.0 } }
-    }
-
-    private fun indoorTemp(): Double? {
-        var visible: Double? = null
-        var any: Double? = null
-        val hiddenKeys = serverSettings.hidden.toSet()
-        for (acc in accs) {
-            val key = "a:${acc.origName}"
-            for (svc in acc.services) {
-                if (svc.type != SVC.HC) continue
-                // an unreachable thermostat reports 0 °C, and the header's
-                // "inside" reading is whichever one comes first in the
-                // accessory list — so a dead unit could speak for the house
-                if (svc.ch(T.STATUS_ACTIVE)?.let { !it.value.asBool() } == true) continue
-                val v = svc.ch(T.CUR_TEMP)?.value.asDouble() ?: continue
-                if (v == 0.0) continue
-                if (any == null) any = v
-                if (visible == null && key !in hiddenKeys) visible = v
-            }
-        }
-        return visible ?: any
     }
 
     private fun buildTiles(): List<TileUi> {

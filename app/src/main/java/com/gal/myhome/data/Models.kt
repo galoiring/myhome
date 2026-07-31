@@ -97,6 +97,9 @@ data class Weather(
 data class Tesla(
     val battery: Int,
     val rangeKm: Double?,
+    // cabin temperature; stops updating the moment the car sleeps, like the
+    // rest of these readings
+    val insideTemp: Double?,
     val pluggedIn: Boolean,
     val chargingState: String,
     val state: String,

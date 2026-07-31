@@ -351,7 +351,7 @@ private fun HeaderRow(
             )
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            if (showWeather) WeatherStrip(ui.weather, ui.indoorTemp, ui.powerW, ui.tesla)
+            if (showWeather) WeatherStrip(ui.weather, ui.powerW, ui.tesla)
         }
         if (ui.offline) {
             Text(
@@ -383,7 +383,7 @@ private fun HeaderRow(
 }
 
 @Composable
-private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, tesla: Tesla? = null) {
+private fun WeatherStrip(w: Weather?, power: Double? = null, tesla: Tesla? = null) {
     BoxWithConstraints {
     // Every child here is intrinsically sized, and the parent centres this row.
     // So when the row outgrows the header it does NOT simply push the last chip
@@ -395,9 +395,8 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, te
     val gap = 14.dp
     val hourCell = 30.dp + 13.dp
     val fixed = 34.dp + 60.dp + 190.dp + gap * 3 +          // icon, temp, label column
-        (if (indoor != null) 104.dp + gap else 0.dp) +
         (if (power != null && power >= 1) 92.dp + gap else 0.dp) +
-        (if (tesla != null) 178.dp + gap else 0.dp)   // car image is ~61dp wide
+        (if (tesla != null) 250.dp + gap else 0.dp)   // double-size block
     val hourRoom = maxWidth - fixed - (1.dp + gap)          // minus the divider
     val hourCount = if (w == null) 0
     else (hourRoom / hourCell).toInt().coerceIn(0, w.hours.size)
@@ -443,34 +442,9 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, te
                 }
             }
         }
-        if (indoor != null) {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                Row(
-                    Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.Home, null,
-                        Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "${trimNum(indoor)}°",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        "inside",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
+        // (a single "inside" temperature used to sit here; every room now has
+        // its own sensor tile, so one house-wide number was just a worse
+        // version of information already on the wall)
         // live metered power from the Shelly devices
         if (power != null && power >= 1) {
             Surface(
@@ -519,14 +493,15 @@ private fun TeslaChip(t: Tesla) {
     // only a feed that has actually stopped gets the faded treatment — being
     // asleep is normal for a parked car and says nothing about the reading
     val alpha = if (t.stale) 0.55f else 1f
+    val subColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(22.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Row(
-            Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
+            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             // Image, not Icon: this one keeps its own colours instead of being
             // flattened to a single tint. Height-constrained with the width
@@ -534,44 +509,54 @@ private fun TeslaChip(t: Tesla) {
             Image(
                 painterResource(R.drawable.ic_tesla_car_photo),
                 contentDescription = "Tesla",
-                modifier = Modifier.height(21.dp),   // 10% up on the first cut
+                modifier = Modifier.height(40.dp),
                 alpha = alpha,
             )
-            Icon(
-                painterResource(R.drawable.ic_tesla), null,
-                Modifier.size(12.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha * 0.8f),
-            )
-            Text(
-                "${t.battery}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = band.copy(alpha = alpha),
-            )
-            Text(
-                "%",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
-            )
-            // charging beats asleep: a plugged-in car is the thing you want to
-            // see at a glance on the way out of the door
-            if (t.charging || t.pluggedIn) {
-                Icon(
-                    Icons.Rounded.Bolt, null,
-                    Modifier.size(15.dp),
-                    tint = if (t.charging) Color(0xFF34A853)
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
-                )
-            } else if (!t.live) {
-                // how long the car has been asleep — not how long ago we polled
-                agoLabel(t.ageMinutes)?.let {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                        "${t.battery}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = band.copy(alpha = alpha),
+                        modifier = Modifier.alignByBaseline(),
                     )
+                    Text(
+                        "%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = subColor,
+                        modifier = Modifier.alignByBaseline().padding(start = 2.dp),
+                    )
+                    // charging beats asleep: a plugged-in car is the thing you
+                    // want to see at a glance on the way out of the door
+                    if (t.charging || t.pluggedIn) {
+                        Icon(
+                            Icons.Rounded.Bolt, null,
+                            Modifier.size(17.dp).padding(start = 3.dp),
+                            tint = if (t.charging) Color(0xFF34A853) else subColor,
+                        )
+                    }
+                }
+                // cabin temperature and, when the car is asleep, how long these
+                // numbers have been standing still
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    t.insideTemp?.let {
+                        Text(
+                            "${trimNum(it)}° cabin",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = subColor,
+                        )
+                    }
+                    if (!t.live) agoLabel(t.ageMinutes)?.let {
+                        Text(it, style = MaterialTheme.typography.labelMedium, color = subColor)
+                    }
                 }
             }
+            Icon(
+                painterResource(R.drawable.ic_tesla), null,
+                Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha * 0.7f),
+            )
         }
     }
 }
