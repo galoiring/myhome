@@ -1,6 +1,6 @@
 {
-  "versionCode": 33,
-  "versionName": "1.1.14",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.14/app-release.apk",
-  "notes": "Tesla battery in the header, read from TeslaMate on the dashboard host (dimmed with its age while the car sleeps). Sensor history no longer records zeros for unreachable devices, so outages read as gaps instead of flat lines. Sparklines fetch 24h instead of the whole 7-day dump (86% less traffic). Yeelight polling backed off to stay clear of the bulbs' command quota. The header's inside temperature ignores dead thermostats."
+  "versionCode": 34,
+  "versionName": "1.1.15",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.15/app-release.apk",
+  "notes": "The Tesla chip now shows the actual Model 3 artwork next to the charge percentage. Fixes the weather strip getting clipped: the header row is intrinsically sized inside a centred box, so adding the Tesla chip in 1.1.14 pushed it over and cropped the weather off the left edge - it now budgets the width and drops hourly forecast cells first."
 }

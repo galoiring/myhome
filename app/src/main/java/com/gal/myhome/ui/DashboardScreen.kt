@@ -384,9 +384,27 @@ private fun HeaderRow(
 
 @Composable
 private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, tesla: Tesla? = null) {
+    BoxWithConstraints {
+    // Every child here is intrinsically sized, and the parent centres this row.
+    // So when the row outgrows the header it does NOT simply push the last chip
+    // off the end — it overflows symmetrically and clips the weather off the
+    // LEFT edge, which is exactly what adding the Tesla chip did. Budget the
+    // width instead, and give up hour cells first: the forecast is the only
+    // part with a sensible "show fewer" answer, and the current conditions are
+    // the thing you actually walk past and read.
+    val gap = 14.dp
+    val hourCell = 30.dp + 13.dp
+    val fixed = 34.dp + 60.dp + 190.dp + gap * 3 +          // icon, temp, label column
+        (if (indoor != null) 104.dp + gap else 0.dp) +
+        (if (power != null && power >= 1) 92.dp + gap else 0.dp) +
+        (if (tesla != null) 168.dp + gap else 0.dp)   // car image is ~55dp wide
+    val hourRoom = maxWidth - fixed - (1.dp + gap)          // minus the divider
+    val hourCount = if (w == null) 0
+    else (hourRoom / hourCell).toInt().coerceIn(0, w.hours.size)
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
         if (w != null) {
             val (icon, label) = wmoInfo(w.code)
@@ -413,7 +431,7 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, te
                     w.rainToday?.let { WeatherStat(Icons.Rounded.Umbrella, "$it%") }
                 }
             }
-            if (w.hours.isNotEmpty()) {
+            if (hourCount > 0) {
                 Box(
                     Modifier
                         .height(34.dp)
@@ -421,7 +439,7 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, te
                         .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                    w.hours.forEach { h -> HourCell(h) }
+                    w.hours.take(hourCount).forEach { h -> HourCell(h) }
                 }
             }
         }
@@ -484,6 +502,7 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, te
         }
         tesla?.let { TeslaChip(it) }
     }
+    }
 }
 
 // Model 3 charge, from TeslaMate on the dashboard host. A parked Tesla sleeps
@@ -508,10 +527,19 @@ private fun TeslaChip(t: Tesla) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // Image, not Icon: this one keeps its own colours instead of being
+            // flattened to a single tint. Height-constrained with the width
+            // left to the 2.9:1 aspect so the car never squashes.
+            Image(
+                painterResource(R.drawable.ic_tesla_car_photo),
+                contentDescription = "Tesla",
+                modifier = Modifier.height(19.dp),
+                alpha = alpha,
+            )
             Icon(
                 painterResource(R.drawable.ic_tesla), null,
-                Modifier.size(17.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                Modifier.size(12.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha * 0.8f),
             )
             Text(
                 "${t.battery}",
