@@ -100,10 +100,25 @@ data class Tesla(
     val pluggedIn: Boolean,
     val chargingState: String,
     val state: String,
+    // when the server polled — NOT when the car last reported. Using this for
+    // the age label made it permanently read "0m"
     val ts: Long,
+    // when the car entered its current state; this is what "last heard from"
+    // actually means, and it's null on servers too old to send it
+    val stateSince: Long?,
 ) {
     val live: Boolean get() = state.equals("online", ignoreCase = true)
     val charging: Boolean get() = chargingState.equals("charging", ignoreCase = true)
+
+    /** How long the reading has been standing still, in minutes. */
+    val ageMinutes: Long?
+        get() = stateSince?.let { (System.currentTimeMillis() - it) / 60000L }
+
+    /** A parked Tesla sleeps within minutes and stays asleep for days, and its
+     * charge doesn't drift while it does — so "asleep" is not a reason to
+     * distrust the number, only to say how old it is. Reserve the faded
+     * treatment for a feed that has genuinely stopped. */
+    val stale: Boolean get() = (ageMinutes ?: 0L) > 12 * 60
 }
 
 data class Target(val aid: Int, val iid: Int)

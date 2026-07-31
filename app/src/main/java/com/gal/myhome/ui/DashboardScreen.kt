@@ -397,7 +397,7 @@ private fun WeatherStrip(w: Weather?, indoor: Double?, power: Double? = null, te
     val fixed = 34.dp + 60.dp + 190.dp + gap * 3 +          // icon, temp, label column
         (if (indoor != null) 104.dp + gap else 0.dp) +
         (if (power != null && power >= 1) 92.dp + gap else 0.dp) +
-        (if (tesla != null) 168.dp + gap else 0.dp)   // car image is ~55dp wide
+        (if (tesla != null) 178.dp + gap else 0.dp)   // car image is ~61dp wide
     val hourRoom = maxWidth - fixed - (1.dp + gap)          // minus the divider
     val hourCount = if (w == null) 0
     else (hourRoom / hourCell).toInt().coerceIn(0, w.hours.size)
@@ -516,8 +516,9 @@ private fun TeslaChip(t: Tesla) {
         t.battery >= 20 -> Color(0xFFF29900)
         else -> Color(0xFFD93025)
     }
-    val dim = !t.live
-    val alpha = if (dim) 0.55f else 1f
+    // only a feed that has actually stopped gets the faded treatment — being
+    // asleep is normal for a parked car and says nothing about the reading
+    val alpha = if (t.stale) 0.55f else 1f
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -533,7 +534,7 @@ private fun TeslaChip(t: Tesla) {
             Image(
                 painterResource(R.drawable.ic_tesla_car_photo),
                 contentDescription = "Tesla",
-                modifier = Modifier.height(19.dp),
+                modifier = Modifier.height(21.dp),   // 10% up on the first cut
                 alpha = alpha,
             )
             Icon(
@@ -561,22 +562,26 @@ private fun TeslaChip(t: Tesla) {
                     tint = if (t.charging) Color(0xFF34A853)
                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
                 )
-            } else if (dim) {
-                Text(
-                    agoLabel(t.ts),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
-                )
+            } else if (!t.live) {
+                // how long the car has been asleep — not how long ago we polled
+                agoLabel(t.ageMinutes)?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                    )
+                }
             }
         }
     }
 }
 
-// compact relative age for readings that may not be current
-private fun agoLabel(ts: Long): String {
-    if (ts <= 0L) return ""
-    val mins = ((System.currentTimeMillis() - ts) / 60000L).coerceAtLeast(0)
+// compact relative age for readings that may not be current; null when there's
+// nothing meaningful to say (unknown, or new enough that the age is noise)
+private fun agoLabel(minutes: Long?): String? {
+    val mins = minutes ?: return null
     return when {
+        mins < 2 -> null
         mins < 60 -> "${mins}m"
         mins < 60 * 48 -> "${mins / 60}h"
         else -> "${mins / 1440}d"
@@ -855,8 +860,15 @@ fun TileCard(
     // isn't hurt, just enough to let the ambient background blobs show through
     val glassAlpha = 0.90f
     val bg by animateColorAsState(
-        (if (tinted) onTile else MaterialTheme.colorScheme.surfaceContainerLow)
-            .copy(alpha = glassAlpha),
+        (when {
+            tinted -> onTile
+            // an untinted tile in light mode sat a hair off white on a near-white
+            // background, so "off" read as absent rather than off — the off
+            // tiles were the hardest things on the panel to see. Dark mode
+            // already has the separation, so only light needs the deeper step.
+            dark -> MaterialTheme.colorScheme.surfaceContainerLow
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        }).copy(alpha = glassAlpha),
         label = "tileBg",
     )
     // hairline edge so the glass cards read as distinct panes instead of flat
@@ -866,10 +878,16 @@ fun TileCard(
         when {
             tinted -> onContent.copy(alpha = .15f)
             dark -> Color.White.copy(alpha = .08f)
-            else -> Color.White.copy(alpha = .55f)
+            // a white hairline on a near-white card is no edge at all; an
+            // outline tone actually draws the pane
+            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f)
         },
         label = "tileBorder",
     )
+    // in light mode the selected segment used the tile's content colour, which
+    // is near-black — it became the heaviest thing on the whole panel for what
+    // is only a mode switch. The tile's own accent is just as unmistakable.
+    val segAccent = if (dark) null else tint.iconCircle
     val nameColor = if (tinted) onContent else MaterialTheme.colorScheme.onSurface
     val subColor = if (tinted) onContent.copy(alpha = .75f)
     else MaterialTheme.colorScheme.onSurfaceVariant
@@ -1228,7 +1246,8 @@ fun TileCard(
                                 Modifier.weight(1f).fillMaxWidth(),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls, moonTile = tile)
+                                ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls,
+                                    moonTile = tile, accent = segAccent)
                             }
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
@@ -1244,7 +1263,8 @@ fun TileCard(
                         verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         tile.controls.forEach {
-                            ControlView(it, vm, nameColor, subColor, soloStepper, dimControls, moonTile = tile)
+                            ControlView(it, vm, nameColor, subColor, soloStepper, dimControls,
+                                moonTile = tile, accent = segAccent)
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
                         if (tile.chips.isNotEmpty()) ChipsRow(tile.chips, vm)
@@ -1500,6 +1520,9 @@ private fun ControlView(
     soloStepper: Boolean = false,
     dim: Boolean = false,
     moonTile: TileUi? = null,
+    // saturated tile accent for the selected segment; null falls back to the
+    // content colour, which is near-black on a light tinted tile
+    accent: Color? = null,
 ) {
     // controls on an off tile fade out so on/off reads at a glance from
     // across the room — a bold 100% brightness bar on an off light lies
@@ -1508,7 +1531,7 @@ private fun ControlView(
     when (ctl) {
         // the moon pill (if any) lives in the warmth row's label slot
         is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s, moonTile) else SliderRow(ctl, vm, c, s, dim)
-        is SegCtl -> SegRow(ctl, vm, c, s)
+        is SegCtl -> SegRow(ctl, vm, c, s, accent)
         is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
         is CurtainCtl -> CurtainRow(ctl, vm, c, s)
     }
@@ -1788,7 +1811,10 @@ private fun SliderRow(
 }
 
 @Composable
-private fun SegRow(ctl: SegCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+private fun SegRow(
+    ctl: SegCtl, vm: DashboardViewModel, onColor: Color, subColor: Color,
+    accent: Color? = null,
+) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(40.dp)) {
         ctl.options.forEachIndexed { i, (v, label) ->
             val selected = ctl.value == v
@@ -1802,8 +1828,10 @@ private fun SegRow(ctl: SegCtl, vm: DashboardViewModel, onColor: Color, subColor
                     // fill with the tile's content color so the selection is
                     // unmistakable on plain and tinted tiles, light or dark —
                     // surfaceBright vanished against a light tile
-                    activeContainerColor = onColor,
-                    activeContentColor = if (onColor.luminance() > 0.5f) Color(0xFF1C1B1F) else Color.White,
+                    activeContainerColor = accent ?: onColor,
+                    activeContentColor = (accent ?: onColor).let {
+                        if (it.luminance() > 0.5f) Color(0xFF1C1B1F) else Color.White
+                    },
                     inactiveContainerColor = Color.Transparent,
                     inactiveContentColor = onColor,
                 ),

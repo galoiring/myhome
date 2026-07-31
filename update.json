@@ -1,6 +1,6 @@
 {
-  "versionCode": 34,
-  "versionName": "1.1.15",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.15/app-release.apk",
-  "notes": "The Tesla chip now shows the actual Model 3 artwork next to the charge percentage. Fixes the weather strip getting clipped: the header row is intrinsically sized inside a centred box, so adding the Tesla chip in 1.1.14 pushed it over and cropped the weather off the left edge - it now budgets the width and drops hourly forecast cells first."
+  "versionCode": 35,
+  "versionName": "1.1.16",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.16/app-release.apk",
+  "notes": "Tesla chip: no longer permanently faded (a parked car sleeps almost all the time, and its charge doesn't drift while it does), and the age now reflects when the car last reported instead of when the server last polled - it used to always read 0m. Car image 10% larger. Light mode: off tiles no longer sit a hair off white against a near-white background, and the selected segment on a mode switch uses the tile's own accent instead of near-black."
 }

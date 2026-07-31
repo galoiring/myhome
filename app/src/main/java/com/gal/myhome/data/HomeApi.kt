@@ -164,6 +164,11 @@ class HomeApi {
             chargingState = o.optString("chargingState", ""),
             state = o.optString("state", ""),
             ts = o.optLong("ts", 0L),
+            stateSince = o.optString("stateSince", "").takeIf { it.isNotBlank() }?.let {
+                try {
+                    java.time.OffsetDateTime.parse(it).toInstant().toEpochMilli()
+                } catch (_: Exception) { null }
+            },
         )
     }
 
