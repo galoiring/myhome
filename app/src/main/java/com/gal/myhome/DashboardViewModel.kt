@@ -369,14 +369,18 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun toggleMoon(tile: TileUi) {
+    fun toggleMoon(tile: TileUi) = setMoon(tile, !(tile.moon?.on ?: false))
+
+    /** Explicit on/off, so the brightness drag can enter and leave moonlight
+     * without having to know which state it's currently in. */
+    fun setMoon(tile: TileUi, on: Boolean) {
         val m = tile.moon ?: return
         if (m.yl != null) {
-            setYeelight(m.yl, !m.on)
+            setYeelight(m.yl, on)
             return
         }
         when {
-            !m.on -> sendChars(m.onTargets, true)
+            on -> sendChars(m.onTargets, true)
             // day/night mode pairs: leaving moonlight means turning day mode
             // on; the pill reads the night switch, so pin it off optimistically
             m.offTargets.isNotEmpty() -> {

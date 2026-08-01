@@ -1,6 +1,6 @@
 {
-  "versionCode": 38,
-  "versionName": "1.1.19",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.19/app-release.apk",
-  "notes": "Tesla chip is always at full strength now, with the last-seen time dropped. Kitchen and dining lights get their own icons so they're distinguishable at a glance instead of two identical bulbs. Fixes a switched-off AC showing its fan level in bright blue, which read as though the fan were running."
+  "versionCode": 39,
+  "versionName": "1.1.20",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.20/app-release.apk",
+  "notes": "Moonlight now lives at the bottom of the dimmer. Drag a light's brightness all the way down and it crosses into moonlight instead of just going very dim - the bar turns indigo and reads 'Moon'. One gesture you already use, no small target to find in the dark. The moon pill still works for direct access."
 }

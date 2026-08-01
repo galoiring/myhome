@@ -975,10 +975,23 @@ fun TileCard(
             }
             // setting brightness on an off light also turns it on
             if (!tile.isOn) vm.toggleTile(tile)
-            val yl = dimmer?.yl
-            if (yl != null) vm.setYeelight(yl, v.roundToInt())
-            else dimmer?.let { vm.sendChars(it.targets, v.roundToInt()) }
+            val moon = tile.moon
+            if (moon != null && v <= MOON_EDGE) {
+                // below the dimmest useful brightness is moonlight, not "very
+                // dim" — the mode you actually want at 3am, reachable by the
+                // gesture you're already making instead of a separate target
+                if (!moon.on) vm.setMoon(tile, true)
+            } else {
+                if (moon?.on == true) vm.setMoon(tile, false)
+                val yl = dimmer?.yl
+                if (yl != null) vm.setYeelight(yl, v.roundToInt())
+                else dimmer?.let { vm.sendChars(it.targets, v.roundToInt()) }
+            }
         }
+        // while dragging, the finger position decides; otherwise the light's
+        // actual mode does
+        val moonZone = tile.moon != null &&
+            (dimDrag?.let { it <= MOON_EDGE } ?: (tile.moon?.on == true))
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
@@ -1015,8 +1028,9 @@ fun TileCard(
                 } else 0f,
                 label = "dimFill",
             )
-            if (frac > 0.01f) {
-                val fillColor = tint.iconCircle.copy(alpha = if (dark) 0.28f else 0.30f)
+            if (frac > 0.01f || moonZone) {
+                val fillColor = if (moonZone) MoonFill.copy(alpha = if (dark) 0.45f else 0.30f)
+                else tint.iconCircle.copy(alpha = if (dark) 0.28f else 0.30f)
                 Box(
                     Modifier
                         .fillMaxHeight()
@@ -1283,6 +1297,7 @@ fun TileCard(
             if (dimmer != null) {
                 BrightnessBar(
                     level = dimDrag ?: dimmer.value,
+                    moonOn = moonZone,
                     tint = tint,
                     subColor = subColor,
                     onPreview = { dimDrag = it },
@@ -1294,21 +1309,30 @@ fun TileCard(
                 )
             }
         }
-        // live % readout while dimming
+        // live readout while dimming — says "Moon" in the bottom zone so the
+        // mode switch is visible before you lift your finger
         dimDrag?.let { v ->
             Surface(
                 shape = RoundedCornerShape(50),
-                color = tint.iconCircle,
+                color = if (moonZone) MoonFill else tint.iconCircle,
                 shadowElevation = 2.dp,
                 modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
             ) {
-                Text(
-                    "${v.roundToInt()}%",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = tint.iconTint,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                )
+                Row(
+                    Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (moonZone) {
+                        Icon(Icons.Rounded.Bedtime, null, Modifier.size(13.dp), tint = MoonInk)
+                    }
+                    Text(
+                        if (moonZone) "Moon" else "${v.roundToInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (moonZone) MoonInk else tint.iconTint,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
         }
@@ -1555,6 +1579,7 @@ private fun ControlView(
 @Composable
 private fun BrightnessBar(
     level: Float,
+    moonOn: Boolean,
     tint: TintSet,
     subColor: Color,
     onPreview: (Float) -> Unit,
@@ -1586,14 +1611,17 @@ private fun BrightnessBar(
                 }
             },
     ) {
-        val frac = (level / 100f).coerceIn(0f, 1f)
+        // in moonlight the bar shows a short stub at the very bottom of its
+        // travel rather than the real brightness: the light IS at the bottom
+        // of its range, and a near-empty bar is the honest picture of that
+        val frac = if (moonOn) 0.13f else (level / 100f).coerceIn(0f, 1f)
         if (frac > 0.02f) {
             Box(
                 Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(frac)
                     .clip(RoundedCornerShape(13.dp))
-                    .background(tint.iconCircle)
+                    .background(if (moonOn) MoonFill else tint.iconCircle)
             ) {
                 // grab handle at the fill's leading edge
                 Box(
@@ -1608,10 +1636,14 @@ private fun BrightnessBar(
             }
         }
         Text(
-            "${level.roundToInt()}%",
+            if (moonOn) "Moon" else "${level.roundToInt()}%",
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (frac > 0.18f) tint.iconTint else subColor,
+            color = when {
+                moonOn -> MoonInk
+                frac > 0.18f -> tint.iconTint
+                else -> subColor
+            },
             modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp),
         )
     }
@@ -2156,6 +2188,13 @@ private fun pm25Status(v: Double): Pair<String, Color> = when {
     v <= 35 -> "Moderate" to Color(0xFFF29900)
     else -> "Poor" to Color(0xFFD93025)
 }
+
+// moonlight sits at the bottom of the dimmer's travel: drag below this and the
+// light switches mode rather than just going very dim. Same indigo the moon
+// pill uses, so the two routes to the mode look like the same thing.
+private const val MOON_EDGE = 6f
+private val MoonFill = Color(0xFF3A3563)
+private val MoonInk = Color(0xFFC9C2FF)
 
 private val BandGreen = Color(0xFF34A853)
 
