@@ -47,6 +47,8 @@ import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Curtains
+import androidx.compose.material.icons.rounded.TableRestaurant
+import androidx.compose.material.icons.rounded.Countertops
 import androidx.compose.material.icons.rounded.Cyclone
 import androidx.compose.material.icons.rounded.Eco
 import androidx.compose.material.icons.rounded.FilterAlt
@@ -194,7 +196,22 @@ private fun tintFor(kind: TileKind): TintSet = when (kind) {
 private fun alwaysTinted(kind: TileKind): Boolean =
     kind == TileKind.CURTAIN || kind == TileKind.SENSOR
 
-fun tileIcon(kind: TileKind): ImageVector = when (kind) {
+// A room full of identical lightbulbs is hard to read at a glance, and the
+// kitchen and dining lights sit side by side. Where the tile's own name says
+// what it is, use that instead of the generic kind icon. Deliberately a short
+// list: a wrong guess is worse than a plain bulb.
+fun tileIcon(kind: TileKind, name: String = ""): ImageVector {
+    if (kind == TileKind.LIGHT || kind == TileKind.OUTLET || kind == TileKind.SWITCH) {
+        val n = name.lowercase()
+        when {
+            "kitchen" in n -> return Icons.Rounded.Countertops
+            "dining" in n -> return Icons.Rounded.TableRestaurant
+        }
+    }
+    return tileKindIcon(kind)
+}
+
+private fun tileKindIcon(kind: TileKind): ImageVector = when (kind) {
     TileKind.LIGHT -> Icons.Rounded.Lightbulb
     TileKind.AC -> Icons.Rounded.AcUnit
     TileKind.PURIFIER -> Icons.Rounded.Air
@@ -490,9 +507,10 @@ private fun TeslaChip(t: Tesla) {
         t.battery >= 20 -> Color(0xFFF29900)
         else -> Color(0xFFD93025)
     }
-    // only a feed that has actually stopped gets the faded treatment — being
-    // asleep is normal for a parked car and says nothing about the reading
-    val alpha = if (t.stale) 0.55f else 1f
+    // always full strength. A parked car is asleep nearly all the time and its
+    // charge doesn't drift while it is, so neither the fade nor an age label
+    // told you anything you'd act on — they just made a working chip look ill.
+    val alpha = 1f
     val subColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -537,19 +555,13 @@ private fun TeslaChip(t: Tesla) {
                         )
                     }
                 }
-                // cabin temperature and, when the car is asleep, how long these
-                // numbers have been standing still
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    t.insideTemp?.let {
-                        Text(
-                            "${trimNum(it)}° cabin",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = subColor,
-                        )
-                    }
-                    if (!t.live) agoLabel(t.ageMinutes)?.let {
-                        Text(it, style = MaterialTheme.typography.labelMedium, color = subColor)
-                    }
+                // cabin temperature, last reported
+                t.insideTemp?.let {
+                    Text(
+                        "${trimNum(it)}° cabin",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = subColor,
+                    )
                 }
             }
             Icon(
@@ -561,17 +573,6 @@ private fun TeslaChip(t: Tesla) {
     }
 }
 
-// compact relative age for readings that may not be current; null when there's
-// nothing meaningful to say (unknown, or new enough that the age is noise)
-private fun agoLabel(minutes: Long?): String? {
-    val mins = minutes ?: return null
-    return when {
-        mins < 2 -> null
-        mins < 60 -> "${mins}m"
-        mins < 60 * 48 -> "${mins / 60}h"
-        else -> "${mins / 1440}d"
-    }
-}
 
 @Composable
 private fun WeatherStat(icon: ImageVector, value: String) {
@@ -945,7 +946,7 @@ fun TileCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(tileIcon(tile.kind), null, Modifier.size(18.dp), tint = Color.White)
+                    Icon(tileIcon(tile.kind, tile.name), null, Modifier.size(18.dp), tint = Color.White)
                     Text(
                         tile.name,
                         color = Color.White,
@@ -1401,7 +1402,7 @@ private fun DoorbellTileBody(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Icon(
-                tileIcon(tile.kind), null,
+                tileIcon(tile.kind, tile.name), null,
                 Modifier.size(16.dp),
                 tint = if (bmp != null) Color.White else subColor,
             )
@@ -1458,7 +1459,7 @@ private fun TileHead(
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
-                    tileIcon(tile.kind), null,
+                    tileIcon(tile.kind, tile.name), null,
                     Modifier.size(if (big) 26.dp else 21.dp),
                     tint = accentIcon ?: if (tinted) tint.iconTint else nameColor,
                 )
@@ -1536,10 +1537,13 @@ private fun ControlView(
     // across the room — a bold 100% brightness bar on an off light lies
     val c = if (dim) onColor.copy(alpha = .45f) else onColor
     val s = if (dim) subColor.copy(alpha = .45f) else subColor
+    // the accent has to fade too, or an off AC shows a bright blue "Low" next
+    // to greyed-out everything else and reads as though the fan were running
+    val a = if (dim) accent?.copy(alpha = .30f) else accent
     when (ctl) {
         // the moon pill (if any) lives in the warmth row's label slot
         is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s, moonTile) else SliderRow(ctl, vm, c, s, dim)
-        is SegCtl -> SegRow(ctl, vm, c, s, accent)
+        is SegCtl -> SegRow(ctl, vm, c, s, a)
         is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
         is CurtainCtl -> CurtainRow(ctl, vm, c, s)
     }

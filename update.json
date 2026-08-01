@@ -1,6 +1,6 @@
 {
-  "versionCode": 37,
-  "versionName": "1.1.18",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.18/app-release.apk",
-  "notes": "The single house-wide 'inside' temperature is gone from the header - every room has its own sensor tile, so it was a worse copy of information already on the wall. The freed space goes to the Tesla block, now roughly double the size with a much larger car and the cabin temperature on a second line."
+  "versionCode": 38,
+  "versionName": "1.1.19",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.19/app-release.apk",
+  "notes": "Tesla chip is always at full strength now, with the last-seen time dropped. Kitchen and dining lights get their own icons so they're distinguishable at a glance instead of two identical bulbs. Fixes a switched-off AC showing its fan level in bright blue, which read as though the fan were running."
 }

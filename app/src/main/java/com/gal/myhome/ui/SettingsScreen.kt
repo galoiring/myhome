@@ -409,7 +409,7 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            tileIcon(tile.kind), null,
+                            tileIcon(tile.kind, tile.name), null,
                             Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
