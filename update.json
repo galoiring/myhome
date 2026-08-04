@@ -1,6 +1,6 @@
 {
-  "versionCode": 39,
-  "versionName": "1.1.20",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.20/app-release.apk",
-  "notes": "Moonlight now lives at the bottom of the dimmer. Drag a light's brightness all the way down and it crosses into moonlight instead of just going very dim - the bar turns indigo and reads 'Moon'. One gesture you already use, no small target to find in the dark. The moon pill still works for direct access."
+  "versionCode": 40,
+  "versionName": "1.1.21",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.21/app-release.apk",
+  "notes": "The nightly screen-off is rebuilt on AlarmManager - the old version could never have worked for a morning wake-up, because recomposition stops while the screen is off. Defaults are now 01:00 off and 07:00 on (display only; the tablet stays locked). The panel also stops flipping itself to the light theme at dawn when nobody has touched it, and tiles with no controls get a much larger icon."
 }

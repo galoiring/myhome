@@ -125,7 +125,11 @@ data class Prefs(
     // Night mode only blanks the UI — a wall panel still glows all night.
     // Off by default: it needs a device-admin grant the user has to give.
     val screenOffEnabled: Boolean = false,
-    val screenOffHour: Int = 0,
+    val screenOffHour: Int = 1,
+    // and wake it again in the morning — the tablet stays locked, so the panel
+    // still needs unlocking; this only turns the display back on
+    val screenOnEnabled: Boolean = true,
+    val screenOnHour: Int = 7,
     val rooms: Map<String, Room> = emptyMap(),
     val yeelights: List<YeelightCfg> = emptyList(),
     val cameras: List<CameraCfg> = emptyList(),
@@ -172,6 +176,8 @@ class PrefsRepo(private val context: Context) {
         val nightDarkTheme = booleanPreferencesKey("night_dark_theme")
         val screenOffEnabled = booleanPreferencesKey("screen_off_enabled")
         val screenOffHour = intPreferencesKey("screen_off_hour")
+        val screenOnEnabled = booleanPreferencesKey("screen_on_enabled")
+        val screenOnHour = intPreferencesKey("screen_on_hour")
         val rooms = stringPreferencesKey("rooms")
         val yeelights = stringPreferencesKey("yeelights")
         val cameras = stringPreferencesKey("cameras")
@@ -268,7 +274,9 @@ class PrefsRepo(private val context: Context) {
             comfortTempHigh = p[K.comfortTempHigh] ?: 22,
             nightDarkTheme = p[K.nightDarkTheme] ?: true,
             screenOffEnabled = p[K.screenOffEnabled] ?: false,
-            screenOffHour = p[K.screenOffHour] ?: 0,
+            screenOffHour = p[K.screenOffHour] ?: 1,
+            screenOnEnabled = p[K.screenOnEnabled] ?: true,
+            screenOnHour = p[K.screenOnHour] ?: 7,
             rooms = parseRooms(p[K.rooms]),
             yeelights = parseYeelights(p[K.yeelights]),
             cameras = parseCameras(p[K.cameras]),
@@ -301,6 +309,8 @@ class PrefsRepo(private val context: Context) {
             p[K.nightDarkTheme] = prefs.nightDarkTheme
             p[K.screenOffEnabled] = prefs.screenOffEnabled
             p[K.screenOffHour] = prefs.screenOffHour
+            p[K.screenOnEnabled] = prefs.screenOnEnabled
+            p[K.screenOnHour] = prefs.screenOnHour
             p[K.rooms] = JSONObject(prefs.rooms.mapValues { it.value.name }).toString()
             p[K.yeelights] = JSONArray(prefs.yeelights.map {
                 JSONObject().put("ip", it.ip).put("name", it.name)

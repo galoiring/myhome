@@ -1466,6 +1466,9 @@ private fun DoorbellTileBody(
 private fun TileHead(
     tile: TileUi, nameColor: Color, subColor: Color, big: Boolean,
     modeControl: SegCtl? = null, onSelectMode: (Int) -> Unit = {},
+    // big = a tile with no controls, chips or readings (the Shelly lights, for
+    // one). Nothing competes for the space, so the icon carries the tile and
+    // gets to be large enough to identify from across the room.
     // sensor tiles color the icon circle by reading (AQ status, hot/cold)
     accentCircle: Color? = null, accentIcon: Color? = null,
 ) {
@@ -1479,12 +1482,12 @@ private fun TileHead(
             shape = CircleShape,
             color = accentCircle ?: if (tinted) tint.iconCircle
             else MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.size(if (big) 50.dp else 40.dp),
+            modifier = Modifier.size(if (big) 64.dp else 40.dp),
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     tileIcon(tile.kind, tile.name), null,
-                    Modifier.size(if (big) 26.dp else 21.dp),
+                    Modifier.size(if (big) 34.dp else 21.dp),
                     tint = accentIcon ?: if (tinted) tint.iconTint else nameColor,
                 )
             }

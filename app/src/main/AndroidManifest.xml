@@ -4,6 +4,13 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- nightly screen off / morning screen on -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- USE_EXACT_ALARM needs no runtime grant; SCHEDULE_EXACT_ALARM is the
+         fallback path on older releases -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
@@ -33,6 +40,20 @@
                 android:resource="@xml/device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- fires the screen-off/on schedule; must be outside the Compose tree
+             because recomposition stops while the screen is off -->
+        <!-- exported only for BOOT_COMPLETED, which the system delivers from
+             outside the app. The schedule's own alarms arrive as explicit
+             component intents and so need no filter — listing their actions
+             here would just let any app on the device fire them. -->
+        <receiver
+            android:name=".ScheduleReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
 

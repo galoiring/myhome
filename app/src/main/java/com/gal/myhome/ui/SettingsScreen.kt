@@ -747,13 +747,26 @@ private fun ScreenOffRows(vm: DashboardViewModel, prefs: Prefs) {
             HourStepperRow("Off at", prefs.screenOffHour) {
                 vm.updatePrefs(prefs.copy(screenOffHour = it))
             }
+            SwitchRow(
+                "Wake it in the morning",
+                "Turns the display back on at the hour below. The tablet stays locked — you still unlock it.",
+                prefs.screenOnEnabled,
+            ) { vm.updatePrefs(prefs.copy(screenOnEnabled = it)) }
+            if (prefs.screenOnEnabled) {
+                HourStepperRow("On at", prefs.screenOnHour) {
+                    vm.updatePrefs(prefs.copy(screenOnHour = it))
+                }
+            }
             if (adminActive) {
                 Row(
                     Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Ready — the panel locks itself at %02d:00 and needs unlocking in the morning."
+                        if (prefs.screenOnEnabled)
+                            "Ready — locks at %02d:00, display comes back at %02d:00 for you to unlock."
+                                .format(prefs.screenOffHour, prefs.screenOnHour)
+                        else "Ready — the panel locks itself at %02d:00."
                             .format(prefs.screenOffHour),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

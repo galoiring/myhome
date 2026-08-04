@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -91,6 +92,21 @@ private fun App(vm: DashboardViewModel = viewModel()) {
     val inNight = prefs.nightMode && nightHours
     val showNight = inNight && (now.time - wokenAt > NIGHT_WAKE_MS)
 
+    // Leaving the night window used to flip the panel to the light theme on its
+    // own, so a screen left on all night was bright by morning with nobody
+    // there. Hold the dark theme past the end of the window until someone
+    // actually touches the panel; the first tap hands control back to the
+    // normal theme rules.
+    var lastTouchAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var nightEndedAt by rememberSaveable { mutableLongStateOf(0L) }
+    var wasNight by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(nightHours) {
+        if (wasNight && !nightHours) nightEndedAt = System.currentTimeMillis()
+        if (nightHours) nightEndedAt = 0L
+        wasNight = nightHours
+    }
+    val heldDark = nightEndedAt > 0L && lastTouchAt < nightEndedAt
+
     // Compose normally learns about the system light/dark switch from a
     // configuration change, but this panel sits in the foreground for weeks and
     // was only picking the change up when it was force-stopped and reopened.
@@ -102,23 +118,21 @@ private fun App(vm: DashboardViewModel = viewModel()) {
             Configuration.UI_MODE_NIGHT_YES
     }
 
-    // Screen off at night: night mode only blanks the UI, so the backlight is
-    // still lit until morning. Locking the tablet is the only way an ordinary
-    // app can actually cut it. Once per calendar day — waking the panel at 3am
-    // should not be met with it locking itself again ten seconds later.
-    var lockedOnDay by rememberSaveable { mutableIntStateOf(-1) }
-    LaunchedEffect(now, prefs.screenOffEnabled, prefs.screenOffHour) {
-        if (!prefs.screenOffEnabled) return@LaunchedEffect
-        val cal = Calendar.getInstance().apply { time = now }
-        val today = cal.get(Calendar.DAY_OF_YEAR)
-        if (lockedOnDay == today) return@LaunchedEffect
-        if (cal.get(Calendar.HOUR_OF_DAY) != prefs.screenOffHour) return@LaunchedEffect
-        val activity = view.context as ComponentActivity
-        if (!ScreenLock.canLock(activity)) return@LaunchedEffect
-        lockedOnDay = today
-        // KEEP_SCREEN_ON would pull the screen straight back on after the lock
-        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        ScreenLock.lockNow(activity)
+    // The schedule itself lives in AlarmManager (see ScreenSchedule) — a
+    // Compose tick cannot fire the morning wake-up, because recomposition stops
+    // the moment the screen goes off. All this does is keep the alarms in step
+    // with the settings.
+    LaunchedEffect(
+        prefs.screenOffEnabled, prefs.screenOffHour,
+        prefs.screenOnEnabled, prefs.screenOnHour,
+    ) {
+        ScreenSchedule.apply(
+            view.context,
+            enabled = prefs.screenOffEnabled && ScreenLock.canLock(view.context),
+            offHour = prefs.screenOffHour,
+            wakeEnabled = prefs.screenOnEnabled,
+            onHour = prefs.screenOnHour,
+        )
     }
 
     LaunchedEffect(prefs.keepScreenOn, showNight, inNight) {
@@ -152,7 +166,7 @@ private fun App(vm: DashboardViewModel = viewModel()) {
 
     MyHomeTheme(
         prefs,
-        forceDark = nightHours && prefs.nightDarkTheme,
+        forceDark = (nightHours || heldDark) && prefs.nightDarkTheme,
         systemDark = systemDark,
     ) {
         Surface(
@@ -175,6 +189,16 @@ private fun App(vm: DashboardViewModel = viewModel()) {
             Box(
                 Modifier
                     .fillMaxSize()
+                    // observe every touch without consuming it, purely to know
+                    // whether anyone is actually at the panel (see heldDark)
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent(PointerEventPass.Initial)
+                                lastTouchAt = System.currentTimeMillis()
+                            }
+                        }
+                    }
                     .drawBehind {
                         drawRect(
                             Brush.radialGradient(
