@@ -324,7 +324,13 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun teslaLoop() {
         while (true) {
             api.baseUrl = prefs.value.serverUrl
-            ui = ui.copy(tesla = api.tesla())
+            // every other loop in here guards its body; this one didn't, so a
+            // single malformed response (a captive-portal page, a half-written
+            // body, anything that upset JSONObject) killed the coroutine and
+            // the chip stayed missing until the app was restarted
+            try {
+                ui = ui.copy(tesla = api.tesla())
+            } catch (_: Exception) { /* keep the last reading; retry next tick */ }
             delay(60 * 1000L)
         }
     }

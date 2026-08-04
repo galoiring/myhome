@@ -31,11 +31,15 @@ enum class TileWidth(val units: Int, val label: String) {
 enum class TileHeight { NORMAL, HALF }
 data class TileSizeCfg(val width: TileWidth = TileWidth.MEDIUM, val height: TileHeight = TileHeight.NORMAL)
 
-// sensible assignments for the devices this home has today; overridable in Settings
+// Sensible assignments for the devices this home has today; overridable in
+// Settings. Shelly keys carry the device's IP, so a DHCP move orphans every
+// setting attached to them — the kitchen unit went .77 -> .52 on 2026-08-04
+// and took the kitchen and dining tiles with it. Reservations on the router
+// are the real fix; see IMPROVEMENTS.md 5.5 for keying on identity instead.
 private val DEFAULT_ROOMS = mapOf(
     "g:color-a01f7d|color-a575ef" to Room.LIVING,
-    "s:192.168.68.77:1" to Room.LIVING,
-    "s:192.168.68.77:2" to Room.LIVING,
+    "s:192.168.68.52:1" to Room.LIVING,
+    "s:192.168.68.52:2" to Room.LIVING,
     "a:Curtain" to Room.LIVING,
     "a:Mi Air Purifier" to Room.LIVING,
     "a:מזגן AC" to Room.WHOLE_HOME,
@@ -59,8 +63,8 @@ private val DEFAULT_ROOMS = mapOf(
 // equal-share weights rather than a fixed/intrinsic height.
 private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
-    "s:192.168.68.77:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
-    "s:192.168.68.77:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    "s:192.168.68.52:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     // sensor tiles are pure readouts — compact by default…

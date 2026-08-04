@@ -1,6 +1,6 @@
 {
-  "versionCode": 40,
-  "versionName": "1.1.21",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.21/app-release.apk",
-  "notes": "The nightly screen-off is rebuilt on AlarmManager - the old version could never have worked for a morning wake-up, because recomposition stops while the screen is off. Defaults are now 01:00 off and 07:00 on (display only; the tablet stays locked). The panel also stops flipping itself to the light theme at dawn when nobody has touched it, and tiles with no controls get a much larger icon."
+  "versionCode": 41,
+  "versionName": "1.1.22",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.22/app-release.apk",
+  "notes": "Kitchen and dining lights are back: the Shelly controlling them moved to a new DHCP address, so the dashboard had been polling a different Shelly entirely. Also fixes the Tesla chip disappearing until the app was restarted - its refresh loop was the only one without error handling, so one bad response killed it for good."
 }
