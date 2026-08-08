@@ -613,9 +613,20 @@ const server = http.createServer(async (req, res) => {
             return {
               ip: dev.ip,
               name: info.name,
+              // type 0 = switch, type 4 = window covering (a Shelly 2.5 in
+              // roller mode). Covers report a 0-100 position instead of on/off
               components: (info.components || [])
-                .filter((c) => c.type === 0) // switches only for now
-                .map((c) => ({ id: c.id, type: c.type, name: c.name, state: c.state, apower: c.apower })),
+                .filter((c) => c.type === 0 || c.type === 4)
+                .map((c) => ({
+                  id: c.id,
+                  type: c.type,
+                  name: c.name,
+                  state: c.state,
+                  apower: c.apower,
+                  ...(c.type === 4
+                    ? { pos: c.cur_pos, targetPos: c.tgt_pos, moving: c.state_str }
+                    : {}),
+                })),
             };
           } catch (e) {
             return { ip: dev.ip, error: String(e.message || e) };
@@ -628,16 +639,22 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/shelly/set' && req.method === 'POST') {
       const raw = await readBody(req);
-      const { ip, id, type, state } = JSON.parse(raw);
+      const { ip, id, type, state, pos } = JSON.parse(raw);
       const allowed = readSettings().shellies.some((d) => d.ip === ip);
       if (!allowed) {
         json(res, 403, { error: 'unknown shelly ip' });
         return;
       }
+      // a cover takes a target position; a switch takes on/off. Verified
+      // against the Shelly 2.5 running the HomeKit firmware, which is the only
+      // API these units expose (no Gen2 Cover.* RPC — that 404s)
+      const isCover = Number(type) === 4;
       const r = await shellyRpc(ip, 'Shelly.SetState', {
         id: Number(id),
         type: Number(type) || 0,
-        state: { state: !!state },
+        state: isCover
+          ? { tgt_pos: Math.max(0, Math.min(100, Math.round(Number(pos)))) }
+          : { state: !!state },
       });
       json(res, r.status === 200 ? 200 : r.status, '{"ok":true}');
       return;

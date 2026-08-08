@@ -41,6 +41,8 @@ private val DEFAULT_ROOMS = mapOf(
     "s:192.168.68.52:1" to Room.LIVING,
     "s:192.168.68.52:2" to Room.LIVING,
     "a:Curtain" to Room.LIVING,
+    // Shelly 2.5 in roller mode, bedroom window
+    "s:192.168.68.56:1" to Room.BEDROOM,
     "a:Mi Air Purifier" to Room.LIVING,
     "a:מזגן AC" to Room.WHOLE_HOME,
     "a:Ceeling light" to Room.BEDROOM, // pre-rename spelling, kept for old installs
@@ -66,6 +68,7 @@ private val DEFAULT_SIZES = mapOf(
     "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "s:192.168.68.52:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    "s:192.168.68.56:1" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     // sensor tiles are pure readouts — compact by default…
     "a:Mi Air Purifier:aq" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),

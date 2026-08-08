@@ -1867,7 +1867,13 @@ private fun SegRow(
             val selected = ctl.value == v
             SegmentedButton(
                 selected = selected,
-                onClick = { vm.sendChars(ctl.targets, v) },
+                onClick = {
+                    vm.sendChars(ctl.targets, v)
+                    // a preset can be two settings at once (Turbo = manual + full fan)
+                    ctl.alsoValues[v]?.let { extra ->
+                        if (ctl.alsoTargets.isNotEmpty()) vm.sendChars(ctl.alsoTargets, extra)
+                    }
+                },
                 shape = SegmentedButtonDefaults.itemShape(index = i, count = ctl.options.size),
                 icon = { SegmentedButtonDefaults.Icon(selected) },
                 border = BorderStroke(1.dp, subColor.copy(alpha = .35f)),
@@ -1959,6 +1965,14 @@ private fun bump(ctl: StepCtl, vm: DashboardViewModel, dir: Int) {
    curtain. Tap or drag the window to set the position — the interaction is
    unchanged from before, just layered over a decorative Canvas instead of a
    plain gradient bar. */
+// a HAP curtain writes a characteristic; a Shelly roller goes through the
+// dashboard server instead, since it isn't on the bridge at all
+private fun commitCurtain(vm: DashboardViewModel, ctl: CurtainCtl, v: Float) {
+    val pos = v.roundToInt()
+    if (ctl.shelly != null) vm.setShellyPos(ctl.shelly, pos)
+    else vm.sendChars(ctl.targets, pos)
+}
+
 @Composable
 private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
@@ -2011,7 +2025,7 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                                 .coerceIn(0f, 100f)
                         },
                         onDragEnd = {
-                            drag?.let { vm.sendChars(ctl.targets, it.roundToInt()) }
+                            drag?.let { v -> commitCurtain(vm, ctl, v) }
                             if (prefs.hapticFeedback) {
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
@@ -2023,7 +2037,7 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
                 .pointerInput("${ctl.id}:tap") {
                     detectTapGestures { off ->
                         val v = ((1f - off.x / size.width) * 100f).coerceIn(0f, 100f)
-                        vm.sendChars(ctl.targets, v.roundToInt())
+                        commitCurtain(vm, ctl, v)
                     }
                 }
         ) {

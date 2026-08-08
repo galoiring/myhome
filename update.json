@@ -1,6 +1,6 @@
 {
-  "versionCode": 41,
-  "versionName": "1.1.22",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.22/app-release.apk",
-  "notes": "Kitchen and dining lights are back: the Shelly controlling them moved to a new DHCP address, so the dashboard had been polling a different Shelly entirely. Also fixes the Tesla chip disappearing until the app was restarted - its refresh loop was the only one without error handling, so one bad response killed it for good."
+  "versionCode": 42,
+  "versionName": "1.1.23",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.23/app-release.apk",
+  "notes": "Bedroom roller shutter added - the Shelly 2.5 in roller mode now gets its own tile with a draggable position. The air purifier's controls collapse to two presets, Auto and Turbo, with Turbo setting manual mode at full fan; its speed slider is gone since the presets cover it."
 }

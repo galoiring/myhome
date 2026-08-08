@@ -70,6 +70,10 @@ data class SliderCtl(
 data class SegCtl(
     val id: String, val options: List<Pair<Int, String>>, val value: Int?,
     val targets: List<Target>,
+    // some presets are two settings at once — the purifier's Turbo is manual
+    // mode AND full fan — so an option can carry a second write
+    val alsoTargets: List<Target> = emptyList(),
+    val alsoValues: Map<Int, Any> = emptyMap(),
 ) : Control
 
 data class StepCtl(
@@ -78,7 +82,12 @@ data class StepCtl(
 ) : Control
 
 // window covering position; value is % open, fabric drawn anchored left (opens right→left)
-data class CurtainCtl(val id: String, val value: Float, val targets: List<Target>) : Control
+data class CurtainCtl(
+    val id: String, val value: Float, val targets: List<Target>,
+    // a Shelly 2.5 in roller mode isn't on the HAP bridge, so its position is
+    // written straight to the dashboard server instead of to characteristics
+    val shelly: ShellyRef? = null,
+) : Control
 
 data class ChipUi(
     val id: String, val label: String, val on: Boolean,
@@ -444,6 +453,14 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         updatePrefs(prefs.value.copy(tileOrder = order))
     }
 
+    fun setShellyPos(ref: ShellyRef, pos: Int) {
+        override("sp:s:${ref.ip}:${ref.compId}", pos)
+        rebuild(ui.offline)
+        viewModelScope.launch {
+            try { api.setShellyPos(ref.ip, ref.compId, pos) } catch (_: Exception) { }
+        }
+    }
+
     fun toggleTile(tile: TileUi) {
         if (tile.yeelight != null) {
             val on = !tile.isOn
@@ -551,6 +568,30 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         for (dev in shellyDevs) {
             for (c in dev.comps) {
                 val key = "s:${dev.ip}:${c.id}"
+                if (c.pos != null) {
+                    // window covering: position, not on/off
+                    val pos = (overrides["sp:$key"]?.first as? Number)?.toFloat() ?: c.pos.toFloat()
+                    list.add(TileUi(
+                        key = key,
+                        name = serverSettings.names[key] ?: c.name ?: dev.name ?: "Shutter",
+                        sub = "${pos.roundToInt()}% open",
+                        kind = TileKind.CURTAIN,
+                        isOn = false,
+                        canToggle = false,
+                        hidden = key in serverSettings.hidden,
+                        isGroup = false,
+                        origNames = emptyList(),
+                        controls = listOf(
+                            CurtainCtl("$key:pos", pos, emptyList(), ShellyRef(dev.ip, c.id, c.type)),
+                        ),
+                        chips = emptyList(),
+                        sensors = emptyList(),
+                        shelly = null,
+                        toggleTargets = emptyList(),
+                        toggleIsActive = false,
+                    ))
+                    continue
+                }
                 val on = (overrides["sk:$key"]?.first as? Boolean) ?: c.state
                 val sub = if (on) {
                     "On" + (if (c.apower > 1) " · ${c.apower.roundToInt()} W" else "")
@@ -843,12 +884,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                     val nearest = cur?.let { cv -> steps.minByOrNull { abs(it.first - cv) }?.first }
                     controls.add(SegCtl(cid(c), steps, nearest, tg(T.SPEED)))
                 } else {
-                    // in Auto the purifier drives its own fan (and reports
-                    // rotation speed 0) — the slider only means anything in
-                    // Manual, so it's hidden until the mode says so
-                    val apAuto = svc.type == SVC.AP &&
-                        svc.ch(T.TGT_AP)?.let { chrValue(acc.aid, it).asDouble()?.toInt() } == 1
-                    if (!apAuto) {
+                    // the purifier's fan is now driven entirely by the
+                    // Auto/Turbo preset above, so it has no slider of its own
+                    if (svc.type != SVC.AP) {
                         controls.add(SliderCtl(cid(c), "Speed", "%",
                             (c.minValue ?: 0.0).toFloat(), (c.maxValue ?: 100.0).toFloat(),
                             (c.minStep ?: 1.0).toFloat(),
@@ -876,10 +914,17 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                 modeCtl = SegCtl(cid(c), labels.filter { it.first in valid }, hcMode, tg(T.TGT_HC))
             }
             svc.ch(T.TGT_AP)?.let { c ->
-                val labels = listOf(0 to "Manual", 1 to "Auto")
+                // Two useful states in practice: leave it alone, or run it hard.
+                // "Turbo" is manual mode plus full fan, written together, which
+                // is why the speed slider that used to sit under this is gone.
+                val labels = listOf(1 to "Auto", 0 to "Turbo")
                 val valid = c.validValues ?: labels.map { it.first }
-                controls.add(SegCtl(cid(c), labels.filter { it.first in valid },
-                    chrValue(acc.aid, c).asDouble()?.toInt(), tg(T.TGT_AP)))
+                controls.add(SegCtl(
+                    cid(c), labels.filter { it.first in valid },
+                    chrValue(acc.aid, c).asDouble()?.toInt(), tg(T.TGT_AP),
+                    alsoTargets = tg(T.SPEED),
+                    alsoValues = mapOf(0 to 100),
+                ))
             }
 
             // only show the setpoint that matters for the current mode (0=auto,1=heat,2=cool)

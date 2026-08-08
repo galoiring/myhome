@@ -70,6 +70,7 @@ class HomeApi {
                         name = c.optString("name", "").ifEmpty { null },
                         state = c.optBoolean("state", false),
                         apower = c.optDouble("apower", 0.0),
+                        pos = if (c.has("pos")) c.optInt("pos", 0) else null,
                     )
                 },
             )
@@ -231,6 +232,15 @@ class HomeApi {
             JSONObject().put("aid", t.aid).put("iid", t.iid).put("value", value)
         })
         postBody("/api/set", JSONObject().put("characteristics", chars).toString())
+    }
+
+    /** Window covering: 0 = closed, 100 = fully open. */
+    suspend fun setShellyPos(ip: String, id: Int, pos: Int) = withContext(Dispatchers.IO) {
+        postBody(
+            "/api/shelly/set",
+            JSONObject().put("ip", ip).put("id", id).put("type", 4)
+                .put("pos", pos.coerceIn(0, 100)).toString(),
+        )
     }
 
     suspend fun setShelly(ip: String, id: Int, type: String, state: Boolean) =

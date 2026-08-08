@@ -53,6 +53,9 @@ data class ShellyComp(
     val name: String?,
     val state: Boolean,
     val apower: Double,
+    // window coverings (a Shelly 2.5 in roller mode) report 0-100 open
+    // instead of on/off; null on plain switches
+    val pos: Int? = null,
 )
 
 data class ShellyDevice(val ip: String, val name: String?, val comps: List<ShellyComp>)
