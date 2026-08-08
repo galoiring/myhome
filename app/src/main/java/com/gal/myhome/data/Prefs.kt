@@ -68,8 +68,10 @@ private val DEFAULT_SIZES = mapOf(
     "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "s:192.168.68.52:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    // paired with the Curtain into one stacked column: same width, both Half
     "s:192.168.68.56:1" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    // Auto/Turbo is two segments — it stays usable at one unit wide
+    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     // sensor tiles are pure readouts — compact by default…
     "a:Mi Air Purifier:aq" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
     // …except the room-climate pair: Large + Half so the nursery and living
@@ -77,6 +79,16 @@ private val DEFAULT_SIZES = mapOf(
     "a:Temperature and Humidity sensor" to TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
     "a:Bedroom" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
     "a:Living Room" to TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
+)
+
+// Tiles that should render as one stacked column, whatever room each belongs
+// to. The automatic sort orders by room then kind, so two tiles can never end
+// up adjacent unless they share a room AND a sort weight — the two window
+// coverings sit in different rooms and are separated by the sensor tiles, so
+// no amount of sizing makes packRow pair them. The second key is pulled up
+// next to the first and adopts its row.
+internal val DEFAULT_PAIRS = listOf(
+    "a:Curtain" to "s:192.168.68.56:1",
 )
 
 // fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit

@@ -19,6 +19,7 @@ import com.gal.myhome.data.SVC
 import com.gal.myhome.data.ServerSettings
 import com.gal.myhome.data.ShellyDevice
 import com.gal.myhome.data.CameraCfg
+import com.gal.myhome.data.DEFAULT_PAIRS
 import com.gal.myhome.data.DEFAULT_WIDTH_FACTORS
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
@@ -739,7 +740,9 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         // an explicit user reorder always wins; new tiles not yet placed sort to the end
         if (p.tileOrder.isNotEmpty()) {
             val orderIndex = p.tileOrder.withIndex().associate { (i, k) -> k to i }
-            return tagged.sortedBy { orderIndex[it.key] ?: Int.MAX_VALUE }
+            // pairs still apply: a saved order predates them and would other-
+            // wise leave the two window coverings rows apart again
+            return pairUp(tagged.sortedBy { orderIndex[it.key] ?: Int.MAX_VALUE })
         }
         val weight: (TileUi) -> Int = { t ->
             when {
@@ -753,11 +756,28 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         return when (p.sortMode) {
-            SortMode.AUTO -> tagged.sortedWith(
+            SortMode.AUTO -> pairUp(tagged.sortedWith(
                 compareBy({ it.room?.priority ?: 5 }, { weight(it) })
-            )
+            ))
             SortMode.NAME -> tagged.sortedBy { it.name.lowercase() }
         }
+    }
+
+    /** Pull each paired tile up beside its partner and into its row, so the
+     * grid's column packer can stack them. Without this they are ordered by
+     * room and kind and can land rows apart — see DEFAULT_PAIRS. */
+    private fun pairUp(tiles: List<TileUi>): List<TileUi> {
+        var out = tiles
+        for ((firstKey, secondKey) in DEFAULT_PAIRS) {
+            val a = out.indexOfFirst { it.key == firstKey }
+            val b = out.indexOfFirst { it.key == secondKey }
+            if (a < 0 || b < 0) continue
+            val moved = out[b].copy(room = out[a].room)
+            val rest = out.filterIndexed { i, _ -> i != b }
+            val at = rest.indexOfFirst { it.key == firstKey }
+            out = rest.toMutableList().apply { add(at + 1, moved) }
+        }
+        return out
     }
 
     private fun tileKind(acc: Acc): TileKind {
