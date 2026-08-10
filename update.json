@@ -1,6 +1,6 @@
 {
-  "versionCode": 43,
-  "versionName": "1.1.24",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.24/app-release.apk",
-  "notes": "The living-room curtain and the bedroom roller shutter now render as one stacked column. The automatic sort orders by room then kind, so two tiles in different rooms could never end up adjacent - tiles can now be explicitly paired. The air purifier drops to one unit wide, which its two-preset control fits comfortably."
+  "versionCode": 44,
+  "versionName": "1.1.25",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.25/app-release.apk",
+  "notes": "Room readings get their own band at the top of the panel: four half-height cards, two by two, each a single dense line - name and comfort band on the left, the reading and humidity on the right, 24h trend behind. The doorbell camera fills the full-height slot beside them, which also leaves the two control lines balanced enough to stretch the full width instead of sitting centered between gutters. The air purifier fills its own column again now that the air-quality tile has moved up."
 }

@@ -57,12 +57,14 @@ private val DEFAULT_ROOMS = mapOf(
 
 // same idea as DEFAULT_ROOMS: sensible starting sizes, overridable per tile in
 // Settings. Kitchen/Dining pair into one stacked column (same width, Half
-// height); Curtain pairs with the purifier's controls the same way, so both
-// actually render short instead of silently reverting to Normal height (a
-// lone unpaired Half-height tile has no matching neighbor to share a column
-// with, so it would otherwise just render at full height). Both fit without
-// scrolling because DashboardScreen sizes their (few, simple) controls with
-// equal-share weights rather than a fixed/intrinsic height.
+// height), as do the Curtain and the bedroom shutter, so both actually render
+// short instead of silently reverting to Normal height (a lone unpaired
+// Half-height tile has no matching neighbor to share a column with, so it
+// would otherwise render at full height with a dead half-cell under it). They
+// fit without scrolling because DashboardScreen sizes their (few, simple)
+// controls with equal-share weights rather than a fixed/intrinsic height.
+// The sensor sizes below only apply in portrait: in landscape the climate
+// readings render in their own strip under the header, at a uniform size.
 private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
     "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
@@ -70,8 +72,11 @@ private val DEFAULT_SIZES = mapOf(
     "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     // paired with the Curtain into one stacked column: same width, both Half
     "s:192.168.68.56:1" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-    // Auto/Turbo is two segments — it stays usable at one unit wide
-    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    // Auto/Turbo is two segments — it stays usable at one unit wide. Full
+    // height because it has no half-tile partner left: the air-quality tile
+    // that used to sit under it moved to the climate strip, and a lone Half
+    // tile just leaves the bottom of its column empty
+    "a:Mi Air Purifier" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
     // sensor tiles are pure readouts — compact by default…
     "a:Mi Air Purifier:aq" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
     // …except the room-climate pair: Large + Half so the nursery and living
@@ -106,6 +111,9 @@ private val STALE_SAVED_SIZES = mapOf(
         TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
         TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     ),
+    // v1.1.25: the purifier's Half height only made sense while the split-off
+    // air-quality tile shared its column
+    "a:Mi Air Purifier" to listOf(TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)),
 )
 
 data class YeelightCfg(val ip: String, val name: String)

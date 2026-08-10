@@ -303,17 +303,63 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            else -> RoomGroupedGrid(
-                tiles = tiles,
-                modifier = Modifier
+            else -> BoxWithConstraints(
+                Modifier
                     .fillMaxSize()
-                    .padding(top = 10.dp),
-            ) { t ->
-                TileCard(
-                    t, vm,
-                    onOpenCamera = { liveCam = it },
-                    onOpenHistory = { tile, bounds -> historyTile = tile to bounds },
-                )
+                    .padding(top = 10.dp)
+            ) {
+                // landscape only: the climate block needs the width. Portrait
+                // keeps the readings in the scrolling grid.
+                val landscape = maxWidth > maxHeight
+                val climate = if (landscape) tiles.filter(::isClimateTile).sortedWith(
+                    compareBy(
+                        { if (climateHasTemp(it)) 0 else 1 },
+                        { it.room?.priority ?: 5 },
+                        { it.name.lowercase() },
+                    )
+                ) else emptyList()
+                // the doorbell shares the band: it's the one tile that wants
+                // to be tall (it's a picture), and taking it out of the room
+                // rows leaves them balanced enough to stretch the full width
+                // instead of sitting centered between gutters
+                val feature = if (climate.isEmpty()) null
+                else tiles.firstOrNull { it.camera?.doorbell == true }
+                val rest = tiles.filterNot {
+                    (climate.isNotEmpty() && isClimateTile(it)) || it === feature
+                }
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (climate.isNotEmpty()) {
+                        // one band, same height as a row of the grid below —
+                        // so the panel reads as three even lines
+                        ClimateStrip(
+                            tiles = climate,
+                            feature = feature,
+                            vm = vm,
+                            onOpenCamera = { liveCam = it },
+                            onOpenHistory = { tile, bounds -> historyTile = tile to bounds },
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                        )
+                    }
+                    // a home that is nothing but sensors would leave the grid
+                    // with no rows at all, and its row packer divides by them
+                    if (rest.isNotEmpty()) {
+                        RoomGroupedGrid(
+                            tiles = rest,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(if (climate.isEmpty()) 1f else 2f),
+                        ) { t ->
+                            TileCard(
+                                t, vm,
+                                onOpenCamera = { liveCam = it },
+                                onOpenHistory = { tile, bounds -> historyTile = tile to bounds },
+                            )
+                        }
+                    }
+                }
             }
         }
         liveCam?.let { cam ->
@@ -606,6 +652,192 @@ private fun HourCell(h: HourForecast) {
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFF4A9BD9),
             )
+        }
+    }
+}
+
+/* ---------- climate strip ---------- */
+
+// The room readings are what you walk past and read, and they were the LAST
+// thing on the panel: below every control, sharing a row with the doorbell,
+// under a row label naming three rooms at once, and squeezed into whatever
+// height the row packer had left (which is what clipped the hero numbers).
+// They get their own strip under the header instead — one card per room,
+// same place and same size every time, independent of how many devices a
+// room happens to own.
+private fun isClimateTile(t: TileUi): Boolean =
+    t.kind == TileKind.SENSOR && t.controls.isEmpty() && t.sensors.isNotEmpty()
+
+private fun climateHasTemp(t: TileUi): Boolean =
+    t.sensors.any { it.kind == SensorKind.TEMP }
+
+@Composable
+private fun ClimateStrip(
+    tiles: List<TileUi>,
+    feature: TileUi?,
+    vm: DashboardViewModel,
+    onOpenCamera: (CameraCfg) -> Unit,
+    onOpenHistory: (TileUi, Rect?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // two columns of half-height cards rather than one row of tall ones:
+        // a reading is a line of text, and a tall card just puts air around it
+        Column(
+            Modifier.weight(2.6f).fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            tiles.chunked(2).forEach { pair ->
+                Row(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    pair.forEach { t ->
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            ClimateCard(t, vm, onOpenHistory)
+                        }
+                    }
+                    // an odd count leaves the last card half-width otherwise
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+        if (feature != null) {
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                TileCard(feature, vm, onOpenCamera = onOpenCamera, onOpenHistory = onOpenHistory)
+            }
+        }
+    }
+}
+
+/* One reading, sized for reading across a room: name and humidity on top,
+   the number and its comfort band on the floor, 24h trend behind. Tapping
+   opens the same history sheet the old sensor tile did. */
+@Composable
+private fun ClimateCard(
+    tile: TileUi,
+    vm: DashboardViewModel,
+    onOpenHistory: (TileUi, Rect?) -> Unit,
+) {
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    val haptics = LocalHapticFeedback.current
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val tint = TealTint
+    val bg = (if (dark) tint.tileDark else tint.tileLight).copy(alpha = if (dark) 0.90f else 0.86f)
+    val onContent = if (dark) tint.contentDark else tint.contentLight
+    val subColor = onContent.copy(alpha = if (dark) .82f else .92f)
+    val sheenBrush = remember(dark) {
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = if (dark) 0.07f else 0.40f),
+            0.28f to Color.Transparent,
+        )
+    }
+
+    val temp = tile.sensors.firstOrNull { it.kind == SensorKind.TEMP }
+    val humidity = tile.sensors.firstOrNull { it.kind == SensorKind.HUMIDITY }
+    val pm25 = tile.sensors.firstOrNull { it.kind == SensorKind.PM25 }
+    val airq = tile.sensors.firstOrNull { it.kind == SensorKind.AIR_QUALITY }
+    // the device's own air-quality band beats one derived from PM2.5 — the
+    // purifier measures more than particulates
+    val band: Pair<String, Color>? = when {
+        tile.notReporting -> "No data" to OfflineGray
+        temp != null -> temp.value.toDoubleOrNull()
+            ?.let { tempStatus(it, prefs.comfortTempLow, prefs.comfortTempHigh) }
+        else -> airq?.value?.takeIf { it != "—" }?.let { it to airQualityPillColor(it) }
+            ?: pm25?.value?.toDoubleOrNull()?.let { pm25Status(it) }
+    }
+    val suffix = if (temp != null) "temp" else if (pm25 != null) "pm25" else null
+    val series = suffix?.let { sfx -> tile.origNames.firstNotNullOfOrNull { vm.histories["$it|$sfx"] } }
+    val dayAgo = System.currentTimeMillis() - 24 * 3600 * 1000L
+    val pts = series?.filter { it.first >= dayAgo }.orEmpty()
+
+    var bounds by remember { mutableStateOf<Rect?>(null) }
+    Surface(
+        onClick = {
+            if (prefs.hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            onOpenHistory(tile, bounds)
+        },
+        shape = RoundedCornerShape(24.dp),
+        color = bg,
+        border = BorderStroke(1.dp, onContent.copy(alpha = .15f)),
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { bounds = it.boundsInWindow() },
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            if (pts.size >= 2) {
+                Sparkline(
+                    pts,
+                    color = (band?.second ?: onContent).copy(alpha = 0.45f),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(maxHeight * 0.42f),
+                )
+            }
+            Box(Modifier.fillMaxSize().background(sheenBrush))
+            // the card is wide and short, so the hero is only limited by the
+            // height — step it down rather than let it clip on a small panel
+            val heroStyle = when {
+                maxHeight >= 100.dp -> MaterialTheme.typography.displayMedium
+                maxHeight >= 82.dp -> MaterialTheme.typography.displaySmall
+                else -> MaterialTheme.typography.headlineMedium
+            }
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (temp != null) Icons.Rounded.Thermostat else Icons.Rounded.BlurOn,
+                            null,
+                            Modifier.size(18.dp),
+                            tint = band?.second ?: subColor,
+                        )
+                        Text(
+                            tile.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = onContent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                    band?.let { (label, color) ->
+                        StatusPill(label, color, Modifier.padding(top = 7.dp))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val hero = temp?.let { "${it.value}°" } ?: pm25?.value ?: "—"
+                    Text(
+                        hero,
+                        style = heroStyle,
+                        fontWeight = FontWeight.Medium,
+                        // neutral while comfy; the number itself turns
+                        // amber/red when the room drifts out of band
+                        color = band?.second?.takeIf { temp != null && it != BandGreen } ?: onContent,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                    if (temp == null && pm25 != null) {
+                        Text(
+                            pm25.unit,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = subColor,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                    humidity?.let {
+                        Box(Modifier.padding(start = 12.dp)) {
+                            HumidityPill(it, subColor, onContent)
+                        }
+                    }
+                }
+            }
         }
     }
 }
