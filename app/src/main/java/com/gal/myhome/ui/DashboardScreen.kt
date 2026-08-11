@@ -332,15 +332,17 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (climate.isNotEmpty()) {
-                        // one band, same height as a row of the grid below —
-                        // so the panel reads as three even lines
+                        // just under an even third. A climate card is a line
+                        // of text and stops improving above ~90dp, while the
+                        // grid rows below hold stacked Half tiles that are
+                        // still hungry at 100 — so the rounding goes to them
                         ClimateStrip(
                             tiles = climate,
                             feature = feature,
                             vm = vm,
                             onOpenCamera = { liveCam = it },
                             onOpenHistory = { tile, bounds -> historyTile = tile to bounds },
-                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            modifier = Modifier.fillMaxWidth().weight(0.85f),
                         )
                     }
                     // a home that is nothing but sensors would leave the grid
@@ -350,7 +352,7 @@ fun DashboardScreen(vm: DashboardViewModel, onOpenSettings: () -> Unit) {
                             tiles = rest,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(if (climate.isEmpty()) 1f else 2f),
+                                .weight(if (climate.isEmpty()) 1f else 2.15f),
                         ) { t ->
                             TileCard(
                                 t, vm,
@@ -782,8 +784,8 @@ private fun ClimateCard(
             // the card is wide and short, so the hero is only limited by the
             // height — step it down rather than let it clip on a small panel
             val heroStyle = when {
-                maxHeight >= 100.dp -> MaterialTheme.typography.displayMedium
-                maxHeight >= 82.dp -> MaterialTheme.typography.displaySmall
+                maxHeight >= 88.dp -> MaterialTheme.typography.displayMedium
+                maxHeight >= 74.dp -> MaterialTheme.typography.displaySmall
                 else -> MaterialTheme.typography.headlineMedium
             }
             Row(
@@ -1313,7 +1315,18 @@ fun TileCard(
 
         val hasBody =
             tile.controls.isNotEmpty() || tile.chips.isNotEmpty() || tile.sensors.isNotEmpty()
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        // a stacked Half tile gets roughly half a row: ~100dp against a full
+        // tile's ~220. Everything chrome — padding, the head's icon circle,
+        // the gap above the controls — has to give way there, or the control
+        // itself is what runs out of room (the curtain's window was clipping
+        // down to nothing between the head and the tile floor)
+        val compact = tileMaxHeight < 130.dp
+        Column(
+            Modifier.padding(
+                horizontal = if (compact) 12.dp else 14.dp,
+                vertical = if (compact) 8.dp else 12.dp,
+            )
+        ) {
             if (!hasBody) {
                 // simple tile: center the head vertically, larger icon
                 Column(
@@ -1478,6 +1491,7 @@ fun TileCard(
                     tile, nameColor, subColor, big = false,
                     modeControl = tile.modeControl,
                     onSelectMode = { v -> tile.modeControl?.let { vm.sendChars(it.targets, v) } },
+                    compact = compact,
                 )
                 val soloStepper = tile.controls.count { it is StepCtl } == 1
                 val dimControls = tile.canToggle && !tile.isOn
@@ -1493,8 +1507,8 @@ fun TileCard(
                         Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .padding(top = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                            .padding(top = if (compact) 6.dp else 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 7.dp),
                     ) {
                         tile.controls.forEach { ctl ->
                             Box(
@@ -1502,7 +1516,7 @@ fun TileCard(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls,
-                                    moonTile = tile, accent = segAccent)
+                                    moonTile = tile, accent = segAccent, compact = compact)
                             }
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
@@ -1703,23 +1717,27 @@ private fun TileHead(
     // gets to be large enough to identify from across the room.
     // sensor tiles color the icon circle by reading (AQ status, hot/cold)
     accentCircle: Color? = null, accentIcon: Color? = null,
+    // a stacked Half tile is about 100dp tall: the circle has to come down to
+    // the height of the two text lines beside it, or it sets the head's height
+    // on its own and takes the room the control below it needs
+    compact: Boolean = false,
 ) {
     val tint = tintFor(tile.kind)
     val tinted = tile.isOn || alwaysTinted(tile.kind)
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (big) 12.dp else 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (big) 12.dp else if (compact) 8.dp else 10.dp),
     ) {
         Surface(
             shape = CircleShape,
             color = accentCircle ?: if (tinted) tint.iconCircle
             else MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.size(if (big) 64.dp else 40.dp),
+            modifier = Modifier.size(if (big) 64.dp else if (compact) 34.dp else 40.dp),
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     tileIcon(tile.kind, tile.name), null,
-                    Modifier.size(if (big) 34.dp else 21.dp),
+                    Modifier.size(if (big) 34.dp else if (compact) 18.dp else 21.dp),
                     tint = accentIcon ?: if (tinted) tint.iconTint else nameColor,
                 )
             }
@@ -1791,6 +1809,9 @@ private fun ControlView(
     // saturated tile accent for the selected segment; null falls back to the
     // content colour, which is near-black on a light tinted tile
     accent: Color? = null,
+    // the control is sharing a Half tile: drop anything the tile head already
+    // says rather than shrink the control itself into illegibility
+    compact: Boolean = false,
 ) {
     // controls on an off tile fade out so on/off reads at a glance from
     // across the room — a bold 100% brightness bar on an off light lies
@@ -1804,7 +1825,7 @@ private fun ControlView(
         is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s, moonTile) else SliderRow(ctl, vm, c, s, dim)
         is SegCtl -> SegRow(ctl, vm, c, s, a)
         is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
-        is CurtainCtl -> CurtainRow(ctl, vm, c, s)
+        is CurtainCtl -> CurtainRow(ctl, vm, c, s, compact)
     }
 }
 
@@ -2206,7 +2227,13 @@ private fun commitCurtain(vm: DashboardViewModel, ctl: CurtainCtl, v: Float) {
 }
 
 @Composable
-private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, subColor: Color) {
+private fun CurtainRow(
+    ctl: CurtainCtl,
+    vm: DashboardViewModel,
+    onColor: Color,
+    subColor: Color,
+    compact: Boolean = false,
+) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
     var drag by remember(ctl.id) { mutableStateOf<Float?>(null) }
@@ -2219,20 +2246,25 @@ private fun CurtainRow(ctl: CurtainCtl, vm: DashboardViewModel, onColor: Color, 
     // fills whatever height the tile gives it (Half-height tiles included)
     // instead of a fixed size that would force scrolling in a compact tile
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (open <= 1f) "Closed" else "${open.roundToInt()}% open",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = if (dragging) FontWeight.Bold else null,
-                color = onColor,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                "drag to move",
-                style = MaterialTheme.typography.labelSmall,
-                color = subColor,
-                maxLines = 1,
-            )
+        // in a Half tile this row costs a quarter of the height to repeat the
+        // position the tile head already shows — the window itself is the
+        // thing worth the space, and it's also the drag affordance
+        if (!compact) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (open <= 1f) "Closed" else "${open.roundToInt()}% open",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = if (dragging) FontWeight.Bold else null,
+                    color = onColor,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "drag to move",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = subColor,
+                    maxLines = 1,
+                )
+            }
         }
         val fabricColors = listOf(
             Color(0xFFB79CFF).copy(alpha = 0.55f),
