@@ -46,6 +46,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -214,6 +215,7 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             refreshServerSettings()
+            launch { reconcileLayout() }
             launch { pollLoop() }
             launch { weatherLoop() }
             launch { historyLoop() }
@@ -269,11 +271,34 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     // dashboard server whenever it changes — cheap, since it only fires when
     // a room, an order or a size actually moved
     private var lastLayoutJson: String? = null
+
+    /** Startup reconcile between this panel's arrangement and the stored one.
+     *
+     * An arranged panel uploads its layout without waiting to be touched, and
+     * a panel with nothing arranged — a fresh install, or one that was wiped —
+     * takes the stored one back. Whichever side actually has a layout wins;
+     * when both are empty there is nothing to do, and when both have one the
+     * tablet in front of you is the authority. */
+    private suspend fun reconcileLayout() {
+        // NOT prefs.value: that's the Eagerly-seeded default until DataStore
+        // emits, and reading it too early would look like an unarranged panel
+        // and restore over a perfectly good layout
+        val p = try { prefsRepo.flow.first() } catch (_: Exception) { return }
+        val stored = p.withLayoutJson(serverSettings.layoutRaw)
+        when {
+            p.layoutIsEmpty && !stored.layoutIsEmpty -> {
+                prefsRepo.update(stored)
+                lastLayoutJson = stored.layoutJson()
+            }
+            !p.layoutIsEmpty -> syncLayout(p)
+        }
+    }
+
     private suspend fun syncLayout(p: Prefs) {
         // a panel that has never been arranged must not overwrite a stored
         // layout with its empties — otherwise installing on a second tablet
         // and touching any setting wipes the copy the first one saved
-        if (p.rooms.isEmpty() && p.tileOrder.isEmpty() && p.tileSizes.isEmpty()) return
+        if (p.layoutIsEmpty) return
         val json = p.layoutJson()
         if (json == lastLayoutJson || json == serverSettings.layoutRaw) return
         lastLayoutJson = json

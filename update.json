@@ -1,6 +1,6 @@
 {
-  "versionCode": 48,
-  "versionName": "1.1.29",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.29/app-release.apk",
-  "notes": "The panel's arrangement - room assignments, tile order and tile sizes - now rides along to the dashboard server with the rest of the settings, and Settings > Layout can copy it as JSON. Until now it lived only in this tablet's DataStore: a wipe lost an arrangement built up over months, and there was no way to read it off a wall-mounted device. A panel that has never been arranged won't overwrite a stored layout with its empties. Requires the matching server update to persist (older servers drop the key harmlessly)."
+  "versionCode": 49,
+  "versionName": "1.1.30",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.30/app-release.apk",
+  "notes": "The panel now reconciles its layout with the server at startup instead of waiting to be touched: an arranged panel uploads its room assignments, tile order and tile sizes on launch, and a panel with nothing arranged - a fresh install, or one whose storage was wiped - takes the stored layout back. Whichever side actually has a layout wins; when both have one, the tablet in front of you is the authority. A corrupt blob on the server can't wipe a working layout, and the reconcile waits for the real stored preferences rather than the momentary defaults, so it can't mistake a still-loading panel for an unarranged one."
 }

@@ -195,6 +195,40 @@ data class Prefs(
         }))
         .toString()
 
+    /** True when nothing has been arranged by hand yet — a fresh install, or
+     *  one whose storage was wiped. Such a panel must never push its empties
+     *  over a stored layout; it's the one that should be *restored* instead. */
+    val layoutIsEmpty: Boolean
+        get() = rooms.isEmpty() && tileOrder.isEmpty() && tileSizes.isEmpty()
+
+    /** Inverse of [layoutJson]: a copy with that arrangement applied. Anything
+     *  unparseable leaves the panel as it is — a corrupt blob on the server
+     *  must not be able to wipe a working layout. */
+    fun withLayoutJson(json: String): Prefs = try {
+        val o = JSONObject(json)
+        val r = o.optJSONObject("rooms")
+        val restoredRooms = buildMap {
+            r?.keys()?.forEach { k ->
+                Room.entries.firstOrNull { it.name == r.getString(k) }?.let { put(k, it) }
+            }
+        }
+        val ord = o.optJSONArray("tileOrder")
+        val restoredOrder = (0 until (ord?.length() ?: 0)).map { ord!!.getString(it) }
+        val sz = o.optJSONObject("tileSizes")
+        val restoredSizes = buildMap {
+            sz?.keys()?.forEach { k ->
+                val e = sz.getJSONObject(k)
+                put(k, TileSizeCfg(
+                    TileWidth.entries.firstOrNull { it.name == e.optString("width") }
+                        ?: TileWidth.MEDIUM,
+                    TileHeight.entries.firstOrNull { it.name == e.optString("height") }
+                        ?: TileHeight.NORMAL,
+                ))
+            }
+        }
+        copy(rooms = restoredRooms, tileOrder = restoredOrder, tileSizes = restoredSizes)
+    } catch (_: Exception) { this }
+
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
     fun sizeFor(key: String): TileSizeCfg {
         // a saved size equal to a pre-v1.1.4 default is stale state, not a
