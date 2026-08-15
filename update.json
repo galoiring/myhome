@@ -1,6 +1,6 @@
 {
-  "versionCode": 49,
-  "versionName": "1.1.30",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.30/app-release.apk",
-  "notes": "The panel now reconciles its layout with the server at startup instead of waiting to be touched: an arranged panel uploads its room assignments, tile order and tile sizes on launch, and a panel with nothing arranged - a fresh install, or one whose storage was wiped - takes the stored layout back. Whichever side actually has a layout wins; when both have one, the tablet in front of you is the authority. A corrupt blob on the server can't wipe a working layout, and the reconcile waits for the real stored preferences rather than the momentary defaults, so it can't mistake a still-loading panel for an unarranged one."
+  "versionCode": 50,
+  "versionName": "1.1.31",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.31/app-release.apk",
+  "notes": "Panel proportions, worked out against the real layout in an emulator. The bedroom roller shutter becomes a tall narrow tile - one unit wide, full height - which is the shape its vertical travel actually wants. The curtain keeps its short wide window a size narrower, and pairs with the dining light. Both lights go half height: a light carries a name, a warmth row and a brightness bar, and on a full-height tile that was a third of the panel for three lines - the warmth dots now ride in the head row, where the width was going spare. A covering states its position in its own head, so it still reads when the control drops its caption on a short or narrow tile."
 }

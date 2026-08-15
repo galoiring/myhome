@@ -1120,6 +1120,16 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             notReporting -> "Offline"
             hasToggle -> if (onAny) parts.ifEmpty { "On" } else "Off"
             kind == TileKind.SENSOR -> "" // the tile body shows the readings large
+            // a covering states its position in the head, the way the Shelly
+            // roller always has. Its control drops the caption on a short or
+            // narrow tile, and without this the position had nowhere left to
+            // show — only the fabric's position hinted at it
+            kind == TileKind.CURTAIN -> controls.filterIsInstance<CurtainCtl>()
+                .firstOrNull()
+                ?.let { c ->
+                    val open = c.value.roundToInt()
+                    if (open <= 1) "Closed" else "$open% open"
+                } ?: parts
             else -> parts
         }
 

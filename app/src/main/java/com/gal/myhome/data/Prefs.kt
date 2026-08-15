@@ -69,12 +69,18 @@ private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
     "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "s:192.168.68.52:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
-    // full height, side by side rather than stacked: the bedroom unit is a
-    // roller shutter, and its travel is the vertical axis — a Half tile left
-    // it about 40dp of drag. The curtain matches so the pair still reads as
-    // one thing (and its window scene gets room to look like a window)
-    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
-    "s:192.168.68.56:1" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    // the bedroom unit is a roller shutter and its travel is the vertical
+    // axis, so it wants the opposite shape to the curtain: one unit wide and
+    // full height. The curtain keeps its short, wide window and pairs with the
+    // dining light instead, which is what keeps that light from being left as
+    // an unpaired Half tile filling a whole column on its own
+    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    "s:192.168.68.56:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+    // lights carry a name, a warmth row and a brightness bar — on a full-height
+    // tile that's a third of a panel for three lines. Half height, with the
+    // warmth dots riding in the head row
+    "g:color-a01f7d|color-a575ef" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    "a:ceilb-4dc114" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
     // Auto/Turbo is two segments — it stays usable at one unit wide. Full
     // height because it has no half-tile partner left: the air-quality tile
     // that used to sit under it moved to the climate strip, and a lone Half
@@ -124,10 +130,20 @@ private val STALE_SAVED_SIZES = mapOf(
     // v1.1.25: the purifier's Half height only made sense while the split-off
     // air-quality tile shared its column
     "a:Mi Air Purifier" to listOf(TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)),
-    // v1.1.27: both coverings went full height when the shutter learned to
-    // draw its travel vertically
-    "a:Curtain" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF)),
-    "s:192.168.68.56:1" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF)),
+    // v1.1.31: the shutter went tall and narrow, the curtain a size narrower,
+    // and the two lights half height. Each list is the size that install was
+    // carrying before — a size deliberately picked since then is left alone
+    "a:Curtain" to listOf(
+        TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
+        TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    ),
+    "s:192.168.68.56:1" to listOf(
+        TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
+        TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+        TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    ),
+    "g:color-a01f7d|color-a575ef" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL)),
+    "a:ceilb-4dc114" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL)),
 )
 
 data class YeelightCfg(val ip: String, val name: String)

@@ -1509,12 +1509,20 @@ fun TileCard(
                     }
                 }
             } else {
+                // a Half light tile can't stack head + warmth row + brightness
+                // bar: the warmth row is what gets squeezed to nothing. It
+                // rides in the head instead, where there's width going spare
+                val warmth = (tile.controls.singleOrNull() as? SliderCtl)?.takeIf { it.warm }
+                val warmthInHead = compact && warmth != null && tile.dimmer != null
                 TileHead(
                     tile, nameColor, subColor, big = false,
                     modeControl = tile.modeControl,
                     onSelectMode = { v -> tile.modeControl?.let { vm.sendChars(it.targets, v) } },
                     compact = compact,
                     narrow = tileMaxWidth < 210.dp,
+                    trailing = if (!warmthInHead) null else ({
+                        WarmthDots(warmth!!, vm, nameColor, subColor, tile, compact = true)
+                    }),
                 )
                 val soloStepper = tile.controls.count { it is StepCtl } == 1
                 val dimControls = tile.canToggle && !tile.isOn
@@ -1525,7 +1533,11 @@ fun TileCard(
                 // height — with sensors and a chip or two on natural-height
                 // bottom rows. Richer tiles keep the scrollable fallback
                 val flexible = tile.controls.size <= 3 && tile.chips.size <= 2
-                if (flexible) {
+                if (warmthInHead) {
+                    // the head is carrying it; leave the rest of the tile to
+                    // the brightness bar
+                    Spacer(Modifier.weight(1f))
+                } else if (flexible) {
                     Column(
                         Modifier
                             .weight(1f)
@@ -1539,7 +1551,11 @@ fun TileCard(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 ControlView(ctl, vm, nameColor, subColor, soloStepper, dimControls,
-                                    moonTile = tile, accent = segAccent, compact = compact)
+                                    moonTile = tile, accent = segAccent, compact = compact,
+                                    // a control gives up its own labels sooner
+                                    // than the head does: a one-unit tile is
+                                    // all window and no room for captions
+                                    narrow = tileMaxWidth < 300.dp)
                             }
                         }
                         if (tile.sensors.isNotEmpty()) SensorsRow(tile.sensors, nameColor, subColor)
@@ -1753,6 +1769,10 @@ private fun TileHead(
     // line. Where the tile is tall enough, wrap; where it isn't (a stacked
     // Half tile), step the name down instead. Either beats "Dining T…"
     narrow: Boolean = false,
+    // a control that rides in the head row instead of below it — on a Half
+    // tile the head plus a control row plus the brightness bar don't fit, and
+    // the control is what gets squeezed out
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val tint = tintFor(tile.kind)
     val tinted = tile.isOn || alwaysTinted(tile.kind)
@@ -1826,6 +1846,7 @@ private fun TileHead(
                 }
             }
         }
+        trailing?.invoke()
         // room is now shown as a row-level label in RoomGroupedGrid, not per tile
     }
 }
@@ -1845,6 +1866,9 @@ private fun ControlView(
     // the control is sharing a Half tile: drop anything the tile head already
     // says rather than shrink the control itself into illegibility
     compact: Boolean = false,
+    // …and the same where the tile is one unit wide: a tall narrow shutter
+    // spends its height on the window, not on repeating its position
+    narrow: Boolean = false,
 ) {
     // controls on an off tile fade out so on/off reads at a glance from
     // across the room — a bold 100% brightness bar on an off light lies
@@ -1855,10 +1879,11 @@ private fun ControlView(
     val a = if (dim) accent?.copy(alpha = .30f) else accent
     when (ctl) {
         // the moon pill (if any) lives in the warmth row's label slot
-        is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s, moonTile) else SliderRow(ctl, vm, c, s, dim)
+        is SliderCtl -> if (ctl.warm) WarmthDots(ctl, vm, c, s, moonTile)
+            else SliderRow(ctl, vm, c, s, dim)
         is SegCtl -> SegRow(ctl, vm, c, s, a)
         is StepCtl -> StepperRow(ctl, vm, c, s, big = soloStepper)
-        is CurtainCtl -> CurtainRow(ctl, vm, c, s, compact)
+        is CurtainCtl -> CurtainRow(ctl, vm, c, s, compact || narrow)
     }
 }
 
@@ -2016,6 +2041,9 @@ private fun MoonPill(tile: TileUi, vm: DashboardViewModel, subColor: Color, modi
 private fun WarmthDots(
     ctl: SliderCtl, vm: DashboardViewModel, onColor: Color, subColor: Color,
     moonTile: TileUi? = null,
+    // riding in the head row of a Half tile: no label (the head names the
+    // light already) and smaller targets, so the row stays the head's height
+    compact: Boolean = false,
 ) {
     val presets = listOf(0f, 1f / 3f, 2f / 3f, 1f).map { ctl.min + (ctl.max - ctl.min) * it }
     val dotColors = listOf(
@@ -2026,16 +2054,20 @@ private fun WarmthDots(
         if (moonTile?.moon != null) {
             // moonlight matters more than the label on these lights — the
             // pill takes over the label slot (same width keeps rows aligned)
-            MoonPill(moonTile, vm, subColor, Modifier.width(66.dp).height(44.dp))
+            MoonPill(
+                moonTile, vm, subColor,
+                if (compact) Modifier.width(52.dp).height(32.dp)
+                else Modifier.width(66.dp).height(44.dp),
+            )
             Spacer(Modifier.width(8.dp))
-        } else Text(
+        } else if (!compact) Text(
             ctl.label,
             style = MaterialTheme.typography.bodySmall,
             color = subColor,
             modifier = Modifier.width(66.dp),
             maxLines = 1,
         )
-        Spacer(Modifier.weight(1f))
+        if (!compact) Spacer(Modifier.weight(1f))
         Row(
             // swallow horizontal drags so a brightness drag wandering over
             // (or starting on) the dots can't fire a preset by mistake —
@@ -2043,14 +2075,17 @@ private fun WarmthDots(
             modifier = Modifier.pointerInput(Unit) {
                 detectHorizontalDragGestures(onHorizontalDrag = { _, _ -> })
             },
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             presets.forEachIndexed { i, v ->
                 val selected = v == nearest
                 Box(
                     Modifier
-                        .size(if (selected) 34.dp else 28.dp)
+                        .size(
+                            if (compact) (if (selected) 28.dp else 23.dp)
+                            else (if (selected) 34.dp else 28.dp)
+                        )
                         .clip(CircleShape)
                         .background(dotColors[i])
                         .then(
