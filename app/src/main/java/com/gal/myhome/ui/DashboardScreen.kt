@@ -921,6 +921,12 @@ private class PackedColumn(val units: Float, val tiles: List<TileUi>)
 
 private fun adjUnits(t: TileUi): Float = t.width.units * t.widthFactor
 
+// a full-height tile only shares a column if what it carries fits in half a
+// row: a name, a reading and at most one control (a light's warmth row, a
+// covering's window). A mode dropdown or a second control needs the height
+private fun stacksWhenNormal(t: TileUi): Boolean =
+    t.controls.size <= 1 && t.modeControl == null && t.chips.size <= 1
+
 private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): List<PackedColumn> {
     val cols = mutableListOf<PackedColumn>()
     var i = 0
@@ -932,8 +938,13 @@ private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): Lis
         // so two lone medium tiles (e.g. a bedroom + baby light) sit one above
         // the other instead of each stretching across a near-empty row
         val bothHalf = t.height == TileHeight.HALF && next?.height == TileHeight.HALF
+        // …but only tiles light enough to survive it. Stacking halves a tile's
+        // height, and the AC (a mode dropdown, a fan row and a setpoint
+        // stepper) simply doesn't fit in half a row — it rendered with its
+        // stepper cut off by the tile floor
         val bothNormal = allowNormalStack &&
-            t.height == TileHeight.NORMAL && next?.height == TileHeight.NORMAL
+            t.height == TileHeight.NORMAL && next?.height == TileHeight.NORMAL &&
+            stacksWhenNormal(t) && stacksWhenNormal(next)
         if (next != null && next.width == t.width && (bothHalf || bothNormal)) {
             cols.add(PackedColumn(maxOf(adjUnits(t), adjUnits(next)), listOf(t, next)))
             i += 2
@@ -1255,6 +1266,7 @@ fun TileCard(
         // stacking partner renders full height, and a Normal one can end up
         // short in a stacked column, so config height can't gate content
         val tileMaxHeight = maxHeight
+        val tileMaxWidth = maxWidth
         // brightness fill — the tile's level at a glance; soft trailing edge
         // so a mid-level fill doesn't slice a tall tile with a hard line
         if (dimmer != null) {
@@ -1330,14 +1342,22 @@ fun TileCard(
             )
         ) {
             if (!hasBody) {
-                // simple tile: center the head vertically, larger icon
+                // simple tile: center the head vertically, larger icon — but
+                // the 64dp circle costs width a one-unit tile hasn't got, and
+                // it was eating it out of the name ("Kitchen Light" came out
+                // as "Kitc…")
                 Column(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    TileHead(tile, nameColor, subColor, big = true)
+                    TileHead(
+                        tile, nameColor, subColor,
+                        big = tileMaxWidth >= 210.dp && tileMaxHeight >= 130.dp,
+                        compact = compact,
+                        narrow = tileMaxWidth < 210.dp,
+                    )
                 }
             } else if (tile.kind == TileKind.SENSOR && tile.controls.isEmpty()) {
                 // room sensor: show the reading large, like a thermometer card
@@ -1494,6 +1514,7 @@ fun TileCard(
                     modeControl = tile.modeControl,
                     onSelectMode = { v -> tile.modeControl?.let { vm.sendChars(it.targets, v) } },
                     compact = compact,
+                    narrow = tileMaxWidth < 210.dp,
                 )
                 val soloStepper = tile.controls.count { it is StepCtl } == 1
                 val dimControls = tile.canToggle && !tile.isOn
@@ -1728,6 +1749,10 @@ private fun TileHead(
     // the height of the two text lines beside it, or it sets the head's height
     // on its own and takes the room the control below it needs
     compact: Boolean = false,
+    // a one-unit tile has no width to spare for "Dining Table Light" on one
+    // line. Where the tile is tall enough, wrap; where it isn't (a stacked
+    // Half tile), step the name down instead. Either beats "Dining T…"
+    narrow: Boolean = false,
 ) {
     val tint = tintFor(tile.kind)
     val tinted = tile.isOn || alwaysTinted(tile.kind)
@@ -1752,9 +1777,10 @@ private fun TileHead(
         Column(Modifier.weight(1f)) {
             Text(
                 tile.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = if (narrow && compact) MaterialTheme.typography.titleSmall
+                else MaterialTheme.typography.titleMedium,
                 color = nameColor,
-                maxLines = 1,
+                maxLines = if (narrow && !compact) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (tile.sub.isNotEmpty()) {

@@ -1,6 +1,6 @@
 {
-  "versionCode": 46,
-  "versionName": "1.1.27",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.27/app-release.apk",
-  "notes": "The bedroom roller shutter now draws its travel vertically - slats descending from the top, an up/down drag, a bottom rail for a grip - instead of borrowing the living-room curtain's sideways motion. Both coverings go full height side by side to give that travel some room. The car's charge only goes amber at 30% and red at 15%, rather than calling half a battery low. A light tile's brightness bar grows on a full-height tile so the space goes to the control you reach for instead of a hole in the middle. A lone Half tile fills its column rather than leaving a dead half-cell under it, and a room label is dropped when it just repeats the row above."
+  "versionCode": 47,
+  "versionName": "1.1.28",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.28/app-release.apk",
+  "notes": "Fixes found by running the panel in an emulator at the wall tablet's exact geometry. A full-height tile now only shares a column when what it carries fits in half a row - the AC was being stacked into a half-height slot and rendering with its setpoint stepper cut off by the tile floor, and a light stacked the same way lost its warmth row entirely. Narrow tiles stop ellipsing their names: they wrap to two lines where there's height for it, and step the name down a size where there isn't (a stacked Half tile), so \"Dining T...\" reads as \"Dining Table Light\". The big 64dp icon head is reserved for tiles wide enough to afford it - it was eating the width out of the name on one-unit tiles."
 }
