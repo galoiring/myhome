@@ -69,9 +69,12 @@ private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
     "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     "s:192.168.68.52:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
-    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-    // paired with the Curtain into one stacked column: same width, both Half
-    "s:192.168.68.56:1" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
+    // full height, side by side rather than stacked: the bedroom unit is a
+    // roller shutter, and its travel is the vertical axis — a Half tile left
+    // it about 40dp of drag. The curtain matches so the pair still reads as
+    // one thing (and its window scene gets room to look like a window)
+    "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
+    "s:192.168.68.56:1" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
     // Auto/Turbo is two segments — it stays usable at one unit wide. Full
     // height because it has no half-tile partner left: the air-quality tile
     // that used to sit under it moved to the climate strip, and a lone Half
@@ -96,6 +99,13 @@ internal val DEFAULT_PAIRS = listOf(
     "a:Curtain" to "s:192.168.68.56:1",
 )
 
+// Window coverings that travel VERTICALLY — a roller shutter comes down from
+// the top, where the living-room curtain draws sideways. Nothing in the
+// protocol says which a device is (the same Shelly roller firmware drives
+// both, and HomeKit's WindowCovering has no orientation), so it's a per-device
+// fact like the room assignments above.
+internal val DEFAULT_VERTICAL_COVERS = setOf("s:192.168.68.56:1")
+
 // fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit
 // system can't express; applied as a multiplier on the tile's unit width.
 // Doorbell cameras get their own +15 % via the doorbell flag in the VM.
@@ -114,6 +124,10 @@ private val STALE_SAVED_SIZES = mapOf(
     // v1.1.25: the purifier's Half height only made sense while the split-off
     // air-quality tile shared its column
     "a:Mi Air Purifier" to listOf(TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)),
+    // v1.1.27: both coverings went full height when the shutter learned to
+    // draw its travel vertically
+    "a:Curtain" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF)),
+    "s:192.168.68.56:1" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF)),
 )
 
 data class YeelightCfg(val ip: String, val name: String)

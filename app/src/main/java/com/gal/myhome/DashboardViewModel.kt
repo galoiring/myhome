@@ -20,6 +20,7 @@ import com.gal.myhome.data.ServerSettings
 import com.gal.myhome.data.ShellyDevice
 import com.gal.myhome.data.CameraCfg
 import com.gal.myhome.data.DEFAULT_PAIRS
+import com.gal.myhome.data.DEFAULT_VERTICAL_COVERS
 import com.gal.myhome.data.DEFAULT_WIDTH_FACTORS
 import com.gal.myhome.data.Room
 import com.gal.myhome.data.TileHeight
@@ -88,6 +89,10 @@ data class CurtainCtl(
     // a Shelly 2.5 in roller mode isn't on the HAP bridge, so its position is
     // written straight to the dashboard server instead of to characteristics
     val shelly: ShellyRef? = null,
+    // a roller shutter travels up and down, not sideways: the tile draws the
+    // slats descending from the top and takes an up/down drag. Same position
+    // scale either way — 100 is fully open
+    val vertical: Boolean = false,
 ) : Control
 
 data class ChipUi(
@@ -583,7 +588,10 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
                         isGroup = false,
                         origNames = emptyList(),
                         controls = listOf(
-                            CurtainCtl("$key:pos", pos, emptyList(), ShellyRef(dev.ip, c.id, c.type)),
+                            CurtainCtl(
+                                "$key:pos", pos, emptyList(), ShellyRef(dev.ip, c.id, c.type),
+                                vertical = key in DEFAULT_VERTICAL_COVERS,
+                            ),
                         ),
                         chips = emptyList(),
                         sensors = emptyList(),

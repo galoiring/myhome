@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -117,6 +118,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -550,9 +552,12 @@ private fun WeatherStrip(w: Weather?, power: Double? = null, tesla: Tesla? = nul
 // though the car just reported it.
 @Composable
 private fun TeslaChip(t: Tesla) {
+    // a Model 3 at half charge is a normal, fine state of affairs — amber from
+    // 50 % down cried wolf on most of the car's life. Amber is "plan a charge"
+    // (30 %), red is "charge it now" (15 %).
     val band = when {
-        t.battery >= 50 -> Color(0xFF34A853)
-        t.battery >= 20 -> Color(0xFFF29900)
+        t.battery > 30 -> Color(0xFF34A853)
+        t.battery > 15 -> Color(0xFFF29900)
         else -> Color(0xFFD93025)
     }
     // always full strength. A parked car is asleep nearly all the time and its
@@ -907,10 +912,11 @@ private fun groupIntoRows(tiles: List<TileUi>): List<RoomRow> {
 }
 
 // a column is one Normal-height tile, or two Half-height tiles of the same
-// width stacked together; a lone Half-height tile (no matching neighbor)
-// renders in the top half of its column so "shrink this tile" still works
-// without a stacking partner. Units are fractional: a tile's widthFactor
-// applies fine ±% trims the coarse S/M/L unit system can't express
+// width stacked together. Half is a request to SHARE a column, so a lone
+// Half tile (no matching neighbor) fills its column instead of rendering
+// short over a dead half-cell — that empty cell was the most visible hole
+// in the panel whenever a pairing didn't come off. Units are fractional: a
+// tile's widthFactor applies fine ±% trims the coarse S/M/L system can't
 private class PackedColumn(val units: Float, val tiles: List<TileUi>)
 
 private fun adjUnits(t: TileUi): Float = t.width.units * t.widthFactor
@@ -1014,7 +1020,11 @@ fun RoomGroupedGrid(
                         .weight(1f)
                         .fillMaxWidth(),
                 ) {
-                    if (label != null) {
+                    // a hand-ordered tile list can put the same room on two
+                    // rows running; repeating its name says nothing and costs
+                    // the row 22dp of tile height
+                    val repeated = rowIndex > 0 && packedRows[rowIndex - 1].first == label
+                    if (label != null && !repeated) {
                         Text(
                             label,
                             style = MaterialTheme.typography.labelMedium,
@@ -1038,14 +1048,6 @@ fun RoomGroupedGrid(
                                     ) {
                                         Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[0]) }
                                         Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[1]) }
-                                    }
-                                } else if (col.tiles[0].height == TileHeight.HALF) {
-                                    Column(
-                                        Modifier.fillMaxSize(),
-                                        verticalArrangement = Arrangement.spacedBy(gap),
-                                    ) {
-                                        Box(Modifier.weight(1f).fillMaxWidth()) { tileContent(col.tiles[0]) }
-                                        Spacer(Modifier.weight(1f))
                                     }
                                 } else {
                                     tileContent(col.tiles[0])
@@ -1552,6 +1554,11 @@ fun TileCard(
                         dimDrag = null
                     },
                     onSet = commitDim,
+                    height = when {
+                        tileMaxHeight >= 190.dp -> 54.dp
+                        tileMaxHeight >= 150.dp -> 38.dp
+                        else -> 26.dp
+                    },
                 )
             }
         }
@@ -1841,13 +1848,17 @@ private fun BrightnessBar(
     onPreview: (Float) -> Unit,
     onEnd: () -> Unit,
     onSet: (Float) -> Unit,
+    // a light tile carries a name, a warmth row and this — on a full-height
+    // tile that left a hole in the middle. The bar is the control you
+    // actually reach for, so it takes the slack instead of the void keeping it
+    height: Dp = 26.dp,
 ) {
     Box(
         Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
-            .height(26.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .height(height)
+            .clip(RoundedCornerShape(height / 2))
             .background(subColor.copy(alpha = 0.16f))
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
@@ -1876,7 +1887,7 @@ private fun BrightnessBar(
                 Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(frac)
-                    .clip(RoundedCornerShape(13.dp))
+                    .clip(RoundedCornerShape(height / 2))
                     .background(if (moonOn) MoonFill else tint.iconCircle)
             ) {
                 // grab handle at the fill's leading edge
@@ -2279,29 +2290,52 @@ private fun CurtainRow(
                 .fillMaxWidth()
                 .weight(1f)
                 .clip(RoundedCornerShape(18.dp))
-                .pointerInput(ctl.id) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { off ->
-                            drag = ((1f - off.x / size.width) * 100f).coerceIn(0f, 100f)
-                        },
-                        onHorizontalDrag = { change, _ ->
-                            drag = ((1f - change.position.x / size.width) * 100f)
-                                .coerceIn(0f, 100f)
-                        },
-                        onDragEnd = {
-                            drag?.let { v -> commitCurtain(vm, ctl, v) }
-                            if (prefs.hapticFeedback) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            }
-                            drag = null
-                        },
-                        onDragCancel = { drag = null },
-                    )
-                }
+                .then(
+                    // a shutter's fabric hangs from the top, so its travel is
+                    // the vertical axis and the drag has to follow it
+                    if (ctl.vertical) Modifier.pointerInput(ctl.id) {
+                        detectVerticalDragGestures(
+                            onDragStart = { off ->
+                                drag = ((1f - off.y / size.height) * 100f).coerceIn(0f, 100f)
+                            },
+                            onVerticalDrag = { change, _ ->
+                                drag = ((1f - change.position.y / size.height) * 100f)
+                                    .coerceIn(0f, 100f)
+                            },
+                            onDragEnd = {
+                                drag?.let { v -> commitCurtain(vm, ctl, v) }
+                                if (prefs.hapticFeedback) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                drag = null
+                            },
+                            onDragCancel = { drag = null },
+                        )
+                    } else Modifier.pointerInput(ctl.id) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { off ->
+                                drag = ((1f - off.x / size.width) * 100f).coerceIn(0f, 100f)
+                            },
+                            onHorizontalDrag = { change, _ ->
+                                drag = ((1f - change.position.x / size.width) * 100f)
+                                    .coerceIn(0f, 100f)
+                            },
+                            onDragEnd = {
+                                drag?.let { v -> commitCurtain(vm, ctl, v) }
+                                if (prefs.hapticFeedback) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                drag = null
+                            },
+                            onDragCancel = { drag = null },
+                        )
+                    }
+                )
                 .pointerInput("${ctl.id}:tap") {
                     detectTapGestures { off ->
-                        val v = ((1f - off.x / size.width) * 100f).coerceIn(0f, 100f)
-                        commitCurtain(vm, ctl, v)
+                        val v = if (ctl.vertical) (1f - off.y / size.height) * 100f
+                        else (1f - off.x / size.width) * 100f
+                        commitCurtain(vm, ctl, v.coerceIn(0f, 100f))
                     }
                 }
         ) {
@@ -2320,84 +2354,136 @@ private fun CurtainRow(
             }
 
             val fraction = (1f - open / 100f).coerceIn(0.03f, 1f)
-            // curtain fabric — pinned left, recedes rightward as it opens;
-            // leading edge rounded so the fabric sits visually above the window
+            // fabric — pinned to the head rail (left for a curtain, top for a
+            // shutter) and receding as it opens; leading edge rounded so it
+            // sits visually above the window. A shutter's slats run across
+            // the travel, a curtain's pleats run along it.
             Box(
                 Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(fraction)
-                    .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp))
-                    .background(Brush.horizontalGradient(fabricColors))
+                    .then(
+                        if (ctl.vertical) Modifier.fillMaxWidth().fillMaxHeight(fraction)
+                        else Modifier.fillMaxHeight().fillMaxWidth(fraction)
+                    )
+                    .clip(
+                        if (ctl.vertical) RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp)
+                        else RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)
+                    )
+                    .background(
+                        if (ctl.vertical) Brush.verticalGradient(fabricColors)
+                        else Brush.horizontalGradient(fabricColors)
+                    )
                     .drawBehind {
-                        var x = 10.dp.toPx()
                         val step = 15.dp.toPx()
-                        while (x < size.width - 4.dp.toPx()) {
-                            drawLine(
-                                pleatDark,
-                                Offset(x, 6.dp.toPx()),
-                                Offset(x, size.height - 6.dp.toPx()),
-                                strokeWidth = 2.5f,
-                            )
-                            drawLine(
-                                pleatLight,
-                                Offset(x + step / 2f, 6.dp.toPx()),
-                                Offset(x + step / 2f, size.height - 6.dp.toPx()),
-                                strokeWidth = 1.5f,
-                            )
-                            x += step
+                        val inset = 6.dp.toPx()
+                        if (ctl.vertical) {
+                            var y = 10.dp.toPx()
+                            while (y < size.height - 4.dp.toPx()) {
+                                drawLine(
+                                    pleatDark,
+                                    Offset(inset, y), Offset(size.width - inset, y),
+                                    strokeWidth = 2.5f,
+                                )
+                                drawLine(
+                                    pleatLight,
+                                    Offset(inset, y + step / 2f),
+                                    Offset(size.width - inset, y + step / 2f),
+                                    strokeWidth = 1.5f,
+                                )
+                                y += step
+                            }
+                        } else {
+                            var x = 10.dp.toPx()
+                            while (x < size.width - 4.dp.toPx()) {
+                                drawLine(
+                                    pleatDark,
+                                    Offset(x, inset), Offset(x, size.height - inset),
+                                    strokeWidth = 2.5f,
+                                )
+                                drawLine(
+                                    pleatLight,
+                                    Offset(x + step / 2f, inset),
+                                    Offset(x + step / 2f, size.height - inset),
+                                    strokeWidth = 1.5f,
+                                )
+                                x += step
+                            }
                         }
                     }
             )
             // grip + edge shadow live outside the clipped fabric so the pill
             // can overhang the leading edge and stay visible fully closed
             Box(
-                Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(fraction),
+                Modifier.then(
+                    if (ctl.vertical) Modifier.fillMaxWidth().fillMaxHeight(fraction)
+                    else Modifier.fillMaxHeight().fillMaxWidth(fraction)
+                ),
             ) {
                 // soft shadow the fabric casts onto the window
                 Box(
                     Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = 12.dp)
-                        .width(12.dp)
-                        .fillMaxHeight()
+                        .align(if (ctl.vertical) Alignment.BottomCenter else Alignment.CenterEnd)
+                        .then(
+                            if (ctl.vertical) Modifier.offset(y = 12.dp).height(12.dp).fillMaxWidth()
+                            else Modifier.offset(x = 12.dp).width(12.dp).fillMaxHeight()
+                        )
                         .background(
-                            Brush.horizontalGradient(
+                            if (ctl.vertical) Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.10f), Color.Transparent)
+                            ) else Brush.horizontalGradient(
                                 listOf(Color.Black.copy(alpha = 0.10f), Color.Transparent)
                             )
                         )
                 )
-                // pill grip on the leading edge
+                // pill grip on the leading edge — the bottom rail of a shutter
                 Box(
                     Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = 5.dp)
-                        .fillMaxHeight(0.5f)
-                        .width(11.dp)
+                        .align(if (ctl.vertical) Alignment.BottomCenter else Alignment.CenterEnd)
+                        .then(
+                            if (ctl.vertical) Modifier.offset(y = 5.dp).fillMaxWidth(0.5f).height(11.dp)
+                            else Modifier.offset(x = 5.dp).fillMaxHeight(0.5f).width(11.dp)
+                        )
                         .shadow(3.dp, RoundedCornerShape(6.dp))
                         .background(gripColor)
                 ) {
                     Box(
                         Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 2.dp)
-                            .width(2.dp)
-                            .fillMaxHeight(0.72f)
+                            .align(if (ctl.vertical) Alignment.TopCenter else Alignment.CenterStart)
+                            .then(
+                                if (ctl.vertical) Modifier.padding(top = 2.dp)
+                                    .height(2.dp).fillMaxWidth(0.72f)
+                                else Modifier.padding(start = 2.dp)
+                                    .width(2.dp).fillMaxHeight(0.72f)
+                            )
                             .clip(RoundedCornerShape(1.dp))
                             .background(Color.White.copy(alpha = 0.45f))
                     )
-                    Column(
-                        Modifier.align(Alignment.Center),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        repeat(3) {
-                            Box(
-                                Modifier
-                                    .size(2.5.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.8f))
-                            )
+                    if (ctl.vertical) {
+                        Row(
+                            Modifier.align(Alignment.Center),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            repeat(3) {
+                                Box(
+                                    Modifier
+                                        .size(2.5.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.8f))
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            Modifier.align(Alignment.Center),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            repeat(3) {
+                                Box(
+                                    Modifier
+                                        .size(2.5.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.8f))
+                                )
+                            }
                         }
                     }
                 }
@@ -2409,8 +2495,11 @@ private fun CurtainRow(
                         color = gripColor,
                         shadowElevation = 2.dp,
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 12.dp, y = 5.dp),
+                            .align(if (ctl.vertical) Alignment.BottomEnd else Alignment.TopEnd)
+                            .then(
+                                if (ctl.vertical) Modifier.offset(x = (-6).dp, y = 16.dp)
+                                else Modifier.offset(x = 12.dp, y = 5.dp)
+                            ),
                     ) {
                         Text(
                             "${open.roundToInt()}%",

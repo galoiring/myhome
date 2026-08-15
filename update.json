@@ -1,6 +1,6 @@
 {
-  "versionCode": 45,
-  "versionName": "1.1.26",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.26/app-release.apk",
-  "notes": "Fixes the curtain and shutter tiles clipping in the three-band layout. A stacked Half tile is about half a row tall, and the chrome around a control - card padding, the head's icon circle, the gap above the controls - was eating all of it, leaving the curtain's window with nothing. Compact tiles now tighten all of that, and the curtain drops its own position line (the tile head already shows it) so the window gets the space instead. The climate band gives up a little height to the control rows to match."
+  "versionCode": 46,
+  "versionName": "1.1.27",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.27/app-release.apk",
+  "notes": "The bedroom roller shutter now draws its travel vertically - slats descending from the top, an up/down drag, a bottom rail for a grip - instead of borrowing the living-room curtain's sideways motion. Both coverings go full height side by side to give that travel some room. The car's charge only goes amber at 30% and red at 15%, rather than calling half a battery low. A light tile's brightness bar grows on a full-height tile so the space goes to the control you reach for instead of a hole in the middle. A lone Half tile fills its column rather than leaving a dead half-cell under it, and a room label is dropped when it just repeats the row above."
 }
