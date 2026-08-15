@@ -378,6 +378,11 @@ function sanitizeSettings(s) {
     // (e.g. a Sensibo child bridge — its AC reports both, but the main
     // bridge only carries an orchestrator without humidity)
     pullSensors: Array.isArray(s.pullSensors) ? s.pullSensors : [],
+    // opaque per-client panel layout: the Android app's room assignments,
+    // tile order and tile sizes. The server never reads it — it holds it so
+    // the layout has a copy somewhere other than one tablet's DataStore, and
+    // so it can be inspected without physical access to the tablet
+    layout: s.layout && typeof s.layout === 'object' ? s.layout : {},
   };
 }
 

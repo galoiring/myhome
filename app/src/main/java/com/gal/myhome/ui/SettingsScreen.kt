@@ -7,6 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,9 +66,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -507,6 +513,10 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
                 }
             }
 
+            /* ---- layout export ---- */
+            item { SectionHeader("Layout") }
+            item { LayoutExportRow(prefs) }
+
             /* ---- updates ---- */
             item { SectionHeader("Updates") }
             item {
@@ -656,6 +666,60 @@ private fun RoomDropdown(current: Room?, onSelect: (Room) -> Unit) {
                 )
             }
         }
+    }
+}
+
+/* The arrangement — which room each tile belongs to, the hand-sorted order,
+   the per-tile sizes — is built up over months and lives only in this
+   tablet's DataStore. It now rides along to the dashboard server with the
+   rest of the settings; this is the way to get it off a wall-mounted device
+   by hand (to copy to another panel, or to hand to someone debugging the
+   layout without physical access). */
+@Composable
+private fun LayoutExportRow(prefs: Prefs) {
+    val clipboard = LocalClipboardManager.current
+    var showing by remember { mutableStateOf(false) }
+    val json = remember(prefs.rooms, prefs.tileOrder, prefs.tileSizes) { prefs.layoutJson() }
+
+    Column {
+        Text(
+            "Room assignments, tile order and tile sizes. Saved to the dashboard server automatically; copy it here to move this panel's arrangement somewhere else.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { clipboard.setText(AnnotatedString(json)) }) { Text("Copy layout") }
+            OutlinedButton(onClick = { showing = true }) { Text("Show") }
+        }
+    }
+    if (showing) {
+        AlertDialog(
+            onDismissRequest = { showing = false },
+            title = { Text("Panel layout") },
+            text = {
+                // selectable so it can be picked up by hand, and scrollable
+                // because a full layout runs well past a dialog's height
+                SelectionContainer {
+                    Text(
+                        json,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .heightIn(max = 340.dp)
+                            .verticalScroll(rememberScrollState()),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(json))
+                    showing = false
+                }) { Text("Copy") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showing = false }) { Text("Close") }
+            },
+        )
     }
 }
 

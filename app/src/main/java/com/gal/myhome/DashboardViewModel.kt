@@ -258,7 +258,31 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updatePrefs(p: Prefs) {
-        viewModelScope.launch { prefsRepo.update(p) }
+        viewModelScope.launch {
+            prefsRepo.update(p)
+            syncLayout(p)
+        }
+    }
+
+    // the panel's arrangement lives only in this tablet's DataStore, where a
+    // wipe loses it and nothing can read it off the wall. Park a copy on the
+    // dashboard server whenever it changes — cheap, since it only fires when
+    // a room, an order or a size actually moved
+    private var lastLayoutJson: String? = null
+    private suspend fun syncLayout(p: Prefs) {
+        // a panel that has never been arranged must not overwrite a stored
+        // layout with its empties — otherwise installing on a second tablet
+        // and touching any setting wipes the copy the first one saved
+        if (p.rooms.isEmpty() && p.tileOrder.isEmpty() && p.tileSizes.isEmpty()) return
+        val json = p.layoutJson()
+        if (json == lastLayoutJson || json == serverSettings.layoutRaw) return
+        lastLayoutJson = json
+        try {
+            val fresh = api.settings()
+            fresh.layoutRaw = json
+            api.saveSettings(fresh)
+            serverSettings = fresh
+        } catch (_: Exception) { lastLayoutJson = null }
     }
 
     private suspend fun refreshServerSettings() {

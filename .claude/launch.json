@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["dashboard/preview-proxy.py"],
+      "port": 8091,
+      "autoPort": true
+    }
+  ]
+}

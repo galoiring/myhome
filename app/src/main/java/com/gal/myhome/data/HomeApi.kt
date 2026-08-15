@@ -212,6 +212,7 @@ class HomeApi {
         }
         o.optJSONArray("shellies")?.let { sh -> s.shelliesRaw = sh.toString() }
         o.optJSONArray("pullSensors")?.let { ps -> s.pullSensorsRaw = ps.toString() }
+        o.optJSONObject("layout")?.let { l -> s.layoutRaw = l.toString() }
         s
     }
 
@@ -224,6 +225,7 @@ class HomeApi {
         o.put("hidden", JSONArray(s.hidden))
         o.put("shellies", JSONArray(s.shelliesRaw))
         o.put("pullSensors", JSONArray(s.pullSensorsRaw))
+        o.put("layout", JSONObject(s.layoutRaw))
         postBody("/api/settings", o.toString())
     }
 

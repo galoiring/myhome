@@ -71,6 +71,9 @@ data class ServerSettings(
     // untouched so app-side saves never corrupt them
     var shelliesRaw: String = "[]",
     var pullSensorsRaw: String = "[]",
+    // the panel's own layout (rooms, tile order, tile sizes), parked on the
+    // server so it isn't only in one tablet's DataStore — see Prefs.layoutJson
+    var layoutRaw: String = "{}",
 )
 
 data class HourForecast(

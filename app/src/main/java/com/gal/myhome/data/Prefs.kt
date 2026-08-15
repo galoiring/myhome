@@ -181,6 +181,20 @@ data class Prefs(
     // just ones on the original developer's LAN
     val updateCheckUrl: String = "https://raw.githubusercontent.com/galoiring/myhome/main/update.json",
 ) {
+    /** Everything that decides how the panel is arranged, as JSON.
+     *
+     * These three live only in this tablet's DataStore — a wipe or a reinstall
+     * loses an arrangement built by hand over months, and there's no way to
+     * read it off a wall-mounted device. Parked on the dashboard server with
+     * the rest of the settings, and shown in Settings so it can be copied. */
+    fun layoutJson(): String = JSONObject()
+        .put("rooms", JSONObject(rooms.mapValues { it.value.name }))
+        .put("tileOrder", JSONArray(tileOrder))
+        .put("tileSizes", JSONObject(tileSizes.mapValues {
+            JSONObject().put("width", it.value.width.name).put("height", it.value.height.name)
+        }))
+        .toString()
+
     fun roomFor(key: String): Room? = rooms[key] ?: DEFAULT_ROOMS[key]
     fun sizeFor(key: String): TileSizeCfg {
         // a saved size equal to a pre-v1.1.4 default is stale state, not a
