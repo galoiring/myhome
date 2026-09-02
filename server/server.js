@@ -50,6 +50,8 @@ let doorbellRing = 0;
 const SCRYPTED_DOCKER = process.env.SCRYPTED_DOCKER || 'scrypted';
 const SNAP_TTL_MS = 8000;
 let snapCache = { url: null, ts: 0, buf: null };
+const ACC_TTL_MS = 2000;
+let accCache = { ts: 0, status: 0, body: null };
 
 function loopbackRtsp(raw) {
   let u;
@@ -98,11 +100,67 @@ const HISTORY_SAMPLE_MS = 5 * 60 * 1000;
 const HISTORY_KEEP_MS = 7 * 24 * 3600 * 1000;
 // HomeKit characteristic short types -> series kind
 const HISTORY_TYPES = { 11: 'temp', 10: 'humidity', C6: 'pm25' };
+// Samples are APPENDED to a small log; the full snapshot is only rewritten
+// when that log grows past HISTORY_LOG_MAX or once a day. Rewriting the whole
+// 200 KB file every 5 minutes was ~60 MB of SD-card writes a day (1.3 GB over
+// 18 days, measured) to record a few dozen new numbers.
+const HISTORY_LOG = path.join(__dirname, 'history.jsonl');
+const HISTORY_LOG_MAX = 1024 * 1024;
+const HISTORY_COMPACT_MS = 24 * 3600 * 1000;
+let lastCompact = Date.now();
 let history = {};
 try {
   history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
 } catch (_) {
   /* first run */
+}
+try {
+  // samples taken since the last compaction
+  for (const line of fs.readFileSync(HISTORY_LOG, 'utf8').split('\n')) {
+    if (!line) continue;
+    const p = JSON.parse(line);
+    (history[p.k] = history[p.k] || []).push([p.t, p.v]);
+  }
+} catch (_) {
+  /* no pending samples */
+}
+// a crash between "snapshot written" and "log truncated" replays points the
+// snapshot already holds, so drop duplicate timestamps on the way in
+for (const k of Object.keys(history)) {
+  const seen = new Set();
+  history[k] = history[k]
+    .sort((a, b) => a[0] - b[0])
+    .filter((pt) => (seen.has(pt[0]) ? false : seen.add(pt[0])));
+}
+
+function appendHistory(points) {
+  if (!points.length) return;
+  try {
+    fs.appendFileSync(
+      HISTORY_LOG,
+      points.map(([k, t, v]) => JSON.stringify({ t, k, v })).join('\n') + '\n'
+    );
+  } catch (_) {
+    /* disk hiccup — memory copy still fine */
+  }
+}
+
+function compactHistory() {
+  let size = 0;
+  try {
+    size = fs.statSync(HISTORY_LOG).size;
+  } catch (_) {
+    /* no log yet */
+  }
+  if (size < HISTORY_LOG_MAX && Date.now() - lastCompact < HISTORY_COMPACT_MS) return;
+  try {
+    fs.writeFileSync(HISTORY_FILE + '.tmp', JSON.stringify(history));
+    fs.renameSync(HISTORY_FILE + '.tmp', HISTORY_FILE);
+    fs.writeFileSync(HISTORY_LOG, ''); // its contents are in the snapshot now
+    lastCompact = Date.now();
+  } catch (_) {
+    /* disk hiccup — memory copy still fine */
+  }
 }
 
 // HAP may serialize types short ("11") or as full UUIDs — normalize to short
@@ -177,6 +235,7 @@ async function sampleHistory() {
     return; // HAP briefly unreachable; try again next tick
   }
   const now = Date.now();
+  const added = [];
   for (const acc of (j.accessories || []).concat(syntheticAccessories())) {
     let name = 'Accessory ' + acc.aid;
     for (const svc of acc.services || []) {
@@ -209,7 +268,9 @@ async function sampleHistory() {
         if (!kind || seen.has(kind) || typeof ch.value !== 'number') continue;
         seen.add(kind);
         const key = name + '|' + kind;
-        (history[key] = history[key] || []).push([now, Math.round(ch.value * 10) / 10]);
+        const val = Math.round(ch.value * 10) / 10;
+        (history[key] = history[key] || []).push([now, val]);
+        added.push([key, now, val]);
       }
     }
   }
@@ -217,12 +278,8 @@ async function sampleHistory() {
     history[k] = history[k].filter((p) => now - p[0] < HISTORY_KEEP_MS);
     if (!history[k].length) delete history[k];
   }
-  try {
-    fs.writeFileSync(HISTORY_FILE + '.tmp', JSON.stringify(history));
-    fs.renameSync(HISTORY_FILE + '.tmp', HISTORY_FILE);
-  } catch (_) {
-    /* disk hiccup — memory copy still fine */
-  }
+  appendHistory(added);
+  compactHistory();
 }
 setInterval(sampleHistory, HISTORY_SAMPLE_MS);
 setTimeout(sampleHistory, 5000); // first sample shortly after boot
@@ -386,12 +443,18 @@ function sanitizeSettings(s) {
   };
 }
 
+// cached: this was read off disk on every request, and the app polls a few
+// times a second. Callers only read it, or spread it into a fresh object
+let settingsCache = null;
 function readSettings() {
-  try {
-    return sanitizeSettings(JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')));
-  } catch {
-    return sanitizeSettings({});
+  if (!settingsCache) {
+    try {
+      settingsCache = sanitizeSettings(JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')));
+    } catch {
+      settingsCache = sanitizeSettings({});
+    }
   }
+  return settingsCache;
 }
 
 function shellyRpc(ip, method, params) {
@@ -437,7 +500,81 @@ function writeSettings(s) {
   const tmp = SETTINGS_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(s, null, 2));
   fs.renameSync(tmp, SETTINGS_FILE);
+  settingsCache = sanitizeSettings(s);
 }
+
+/* ---- device polling on the server's own clock ----
+   Every client poll used to make a live HTTP call to each Shelly. The app
+   polls every 3 s, so each device took ~1200 requests an hour, multiplied by
+   however many clients were open. Worse, a device that stopped answering was
+   retried at that same rate forever — the bedroom roller was hit every 3 s
+   for days while it was off the network, and each attempt stalled the
+   response for the full 3 s timeout.
+
+   Now: one loop refreshes each device on a fixed cadence into a cache the
+   endpoints serve, and a device that fails backs off to once a minute. */
+const SHELLY_POLL_MS = 5000;
+const SHELLY_BACKOFF_MAX_MS = 60000;
+const shellyCache = new Map(); // ip -> { data, fails, nextTry }
+
+function shellyEntry(ip) {
+  let e = shellyCache.get(ip);
+  if (!e) {
+    e = { data: null, fails: 0, nextTry: 0 };
+    shellyCache.set(ip, e);
+  }
+  return e;
+}
+
+function shellyView(ip, info) {
+  return {
+    ip,
+    name: info.name,
+    // type 0 = switch, type 4 = window covering (a Shelly 2.5 in roller
+    // mode). Covers report a 0-100 position instead of on/off
+    components: (info.components || [])
+      .filter((c) => c.type === 0 || c.type === 4)
+      .map((c) => ({
+        id: c.id,
+        type: c.type,
+        name: c.name,
+        state: c.state,
+        apower: c.apower,
+        ...(c.type === 4
+          ? { pos: c.cur_pos, targetPos: c.tgt_pos, moving: c.state_str }
+          : {}),
+      })),
+  };
+}
+
+async function refreshShelly(ip) {
+  const e = shellyEntry(ip);
+  try {
+    const r = await shellyRpc(ip, 'Shelly.GetInfoExt');
+    e.data = shellyView(ip, JSON.parse(r.body));
+    e.fails = 0;
+    e.nextTry = Date.now() + SHELLY_POLL_MS;
+  } catch (err) {
+    e.fails++;
+    e.data = { ip, error: String(err.message || err) };
+    e.nextTry =
+      Date.now() + Math.min(SHELLY_POLL_MS * 2 ** e.fails, SHELLY_BACKOFF_MAX_MS);
+  }
+}
+
+async function pollShellies() {
+  const now = Date.now();
+  const list = readSettings().shellies || [];
+  const configured = new Set(list.map((d) => d.ip));
+  for (const ip of [...shellyCache.keys()]) {
+    if (!configured.has(ip)) shellyCache.delete(ip);
+  }
+  await Promise.all(
+    list.filter((d) => shellyEntry(d.ip).nextTry <= now).map((d) => refreshShelly(d.ip))
+  );
+}
+setInterval(pollShellies, 1000);
+setTimeout(pollShellies, 500);
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -459,6 +596,14 @@ function json(res, status, obj) {
 const server = http.createServer(async (req, res) => {
   try {
     if (req.url === '/api/accessories' && req.method === 'GET') {
+      // Homebridge serialises its whole accessory database for each of these.
+      // A TTL just under the app's poll interval keeps every poll fresh while
+      // collapsing bursts (and extra clients) into one upstream call. Writes
+      // clear it immediately so a toggle is never answered from a stale copy.
+      if (accCache.body && Date.now() - accCache.ts < ACC_TTL_MS) {
+        json(res, accCache.status, accCache.body);
+        return;
+      }
       const r = await hapRequest('GET', '/accessories');
       let body = r.body;
       // splice pushed sensors in as regular accessories
@@ -469,6 +614,7 @@ const server = http.createServer(async (req, res) => {
       } catch (_) {
         /* HAP hiccup — pass its response through untouched */
       }
+      if (r.status === 200) accCache = { ts: Date.now(), status: r.status, body };
       json(res, r.status, body);
       return;
     }
@@ -510,6 +656,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const r = await hapRequest('PUT', '/characteristics', { characteristics: chars });
+      accCache.ts = 0; // next read must see the new state
       json(res, r.status === 204 ? 200 : r.status, r.body || '{"ok":true}');
       return;
     }
@@ -609,35 +756,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.url === '/api/shelly' && req.method === 'GET') {
-      const list = readSettings().shellies;
-      const out = await Promise.all(
-        list.map(async (dev) => {
-          try {
-            const r = await shellyRpc(dev.ip, 'Shelly.GetInfoExt');
-            const info = JSON.parse(r.body);
-            return {
-              ip: dev.ip,
-              name: info.name,
-              // type 0 = switch, type 4 = window covering (a Shelly 2.5 in
-              // roller mode). Covers report a 0-100 position instead of on/off
-              components: (info.components || [])
-                .filter((c) => c.type === 0 || c.type === 4)
-                .map((c) => ({
-                  id: c.id,
-                  type: c.type,
-                  name: c.name,
-                  state: c.state,
-                  apower: c.apower,
-                  ...(c.type === 4
-                    ? { pos: c.cur_pos, targetPos: c.tgt_pos, moving: c.state_str }
-                    : {}),
-                })),
-            };
-          } catch (e) {
-            return { ip: dev.ip, error: String(e.message || e) };
-          }
-        })
-      );
+      const out = (readSettings().shellies || []).map((dev) => {
+        const e = shellyCache.get(dev.ip);
+        return (e && e.data) || { ip: dev.ip, error: 'not polled yet' };
+      });
       json(res, 200, out);
       return;
     }
@@ -661,6 +783,7 @@ const server = http.createServer(async (req, res) => {
           ? { tgt_pos: Math.max(0, Math.min(100, Math.round(Number(pos)))) }
           : { state: !!state },
       });
+      shellyEntry(ip).nextTry = 0; // re-read this device on the next tick
       json(res, r.status === 200 ? 200 : r.status, '{"ok":true}');
       return;
     }
