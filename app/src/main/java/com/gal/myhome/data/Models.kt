@@ -58,7 +58,16 @@ data class ShellyComp(
     val pos: Int? = null,
 )
 
-data class ShellyDevice(val ip: String, val name: String?, val comps: List<ShellyComp>)
+data class ShellyDevice(
+    val ip: String,
+    val name: String?,
+    val comps: List<ShellyComp>,
+    // stable per-device identity from the firmware (e.g. "shellyswitch25-7BED24");
+    // tile keys are built from this so a DHCP move can't orphan the settings.
+    // Null against an older server that doesn't publish it — then we fall back
+    // to the address, which is the pre-1.1.32 behaviour
+    val id: String? = null,
+)
 
 data class Group(var name: String, val members: List<String>)
 

@@ -294,6 +294,28 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Pull the layout the server is holding onto this panel, replacing the
+     *  local one. The startup reconcile only restores when the panel has
+     *  nothing of its own, which is right for a fresh install but no help when
+     *  a panel HAS a layout and it is the wrong one — after a device is
+     *  replaced, say, and its tiles are filed under an id that no longer
+     *  exists. Returns false if the server has no layout to give. */
+    suspend fun restoreLayoutFromServer(): Boolean {
+        return try {
+            val fresh = api.settings()
+            serverSettings = fresh
+            val p = prefsRepo.flow.first()
+            val restored = p.withLayoutJson(fresh.layoutRaw)
+            if (restored.layoutIsEmpty) return false
+            prefsRepo.update(restored)
+            lastLayoutJson = restored.layoutJson()
+            rebuild(ui.offline)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private suspend fun syncLayout(p: Prefs) {
         // a panel that has never been arranged must not overwrite a stored
         // layout with its empties — otherwise installing on a second tablet
@@ -622,7 +644,8 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
         }
         for (dev in shellyDevs) {
             for (c in dev.comps) {
-                val key = "s:${dev.ip}:${c.id}"
+                // keyed by device identity, not address: see ShellyDevice.id
+                val key = "s:${dev.id ?: dev.ip}:${c.id}"
                 if (c.pos != null) {
                     // window covering: position, not on/off
                     val pos = (overrides["sp:$key"]?.first as? Number)?.toFloat() ?: c.pos.toFloat()

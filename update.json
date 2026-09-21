@@ -1,6 +1,6 @@
 {
-  "versionCode": 50,
-  "versionName": "1.1.31",
-  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.31/app-release.apk",
-  "notes": "Panel proportions, worked out against the real layout in an emulator. The bedroom roller shutter becomes a tall narrow tile - one unit wide, full height - which is the shape its vertical travel actually wants. The curtain keeps its short wide window a size narrower, and pairs with the dining light. Both lights go half height: a light carries a name, a warmth row and a brightness bar, and on a full-height tile that was a third of the panel for three lines - the warmth dots now ride in the head row, where the width was going spare. A covering states its position in its own head, so it still reads when the control drops its caption on a short or narrow tile."
+  "versionCode": 51,
+  "versionName": "1.1.32",
+  "url": "https://github.com/galoiring/myhome/releases/download/v1.1.32/app-release.apk",
+  "notes": "Shelly tiles are filed under the device's own identity instead of its IP address. Every per-tile setting - name, room, size, position in the order - used to hang off the address, so each DHCP move silently orphaned the lot: the kitchen unit went .77 to .52 to .51, and the bedroom roller .56 to .80 when the hardware was replaced, each time scattering the layout. The firmware's device id survives both a new lease and a replacement unit. Settings > Layout also gains Restore from server, which pulls the stored arrangement back onto a panel whose own layout has gone wrong - the startup reconcile only helps a panel that has no layout at all. And the one-time size overrides from v1.1.31 are gone; they were outliving their purpose and quietly overriding sizes chosen since."
 }

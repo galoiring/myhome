@@ -529,6 +529,11 @@ function shellyEntry(ip) {
 function shellyView(ip, info) {
   return {
     ip,
+    // The device's own identity, stable across DHCP leases. The app files
+    // every per-tile setting under this instead of the address — the kitchen
+    // unit has moved .77 -> .52 -> .51 and each move silently orphaned its
+    // name, room, size and position.
+    id: info.device_id,
     name: info.name,
     // type 0 = switch, type 4 = window covering (a Shelly 2.5 in roller
     // mode). Covers report a 0-100 position instead of on/off

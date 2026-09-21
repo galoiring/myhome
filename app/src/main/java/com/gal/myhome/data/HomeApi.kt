@@ -61,6 +61,7 @@ class HomeApi {
             val comps = o.getJSONArray("components")
             ShellyDevice(
                 ip = o.getString("ip"),
+                id = o.optString("id", "").ifEmpty { null },
                 name = o.optString("name", "").ifEmpty { null },
                 comps = (0 until comps.length()).map { j ->
                     val c = comps.getJSONObject(j)

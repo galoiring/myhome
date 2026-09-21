@@ -32,17 +32,18 @@ enum class TileHeight { NORMAL, HALF }
 data class TileSizeCfg(val width: TileWidth = TileWidth.MEDIUM, val height: TileHeight = TileHeight.NORMAL)
 
 // Sensible assignments for the devices this home has today; overridable in
-// Settings. Shelly keys carry the device's IP, so a DHCP move orphans every
-// setting attached to them — the kitchen unit went .77 -> .52 on 2026-08-04
-// and took the kitchen and dining tiles with it. Reservations on the router
-// are the real fix; see IMPROVEMENTS.md 5.5 for keying on identity instead.
+// Settings. Shelly keys used to carry the device's IP, so every DHCP move
+// orphaned the name, room, size and order of its tiles — the kitchen unit
+// went .77 -> .52 -> .51 and the bedroom roller .56 -> .80 (new hardware),
+// each time silently. Keys are now the firmware's own device id, which
+// survives both a new lease and a replacement unit of the same model.
 private val DEFAULT_ROOMS = mapOf(
     "g:color-a01f7d|color-a575ef" to Room.LIVING,
-    "s:192.168.68.52:1" to Room.LIVING,
-    "s:192.168.68.52:2" to Room.LIVING,
+    "s:shellyswitch25-7BED24:1" to Room.LIVING,
+    "s:shellyswitch25-7BED24:2" to Room.LIVING,
     "a:Curtain" to Room.LIVING,
     // Shelly 2.5 in roller mode, bedroom window
-    "s:192.168.68.56:1" to Room.BEDROOM,
+    "s:ShellyPlus2PM-08F9E0FCEF3C:1" to Room.BEDROOM,
     "a:Mi Air Purifier" to Room.LIVING,
     "a:מזגן AC" to Room.WHOLE_HOME,
     "a:Ceeling light" to Room.BEDROOM, // pre-rename spelling, kept for old installs
@@ -67,15 +68,15 @@ private val DEFAULT_ROOMS = mapOf(
 // readings render in their own strip under the header, at a uniform size.
 private val DEFAULT_SIZES = mapOf(
     "a:מזגן AC" to TileSizeCfg(TileWidth.LARGE, TileHeight.NORMAL),
-    "s:192.168.68.52:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
-    "s:192.168.68.52:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    "s:shellyswitch25-7BED24:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
+    "s:shellyswitch25-7BED24:2" to TileSizeCfg(TileWidth.SMALL, TileHeight.HALF),
     // the bedroom unit is a roller shutter and its travel is the vertical
     // axis, so it wants the opposite shape to the curtain: one unit wide and
     // full height. The curtain keeps its short, wide window and pairs with the
     // dining light instead, which is what keeps that light from being left as
     // an unpaired Half tile filling a whole column on its own
     "a:Curtain" to TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-    "s:192.168.68.56:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
+    "s:ShellyPlus2PM-08F9E0FCEF3C:1" to TileSizeCfg(TileWidth.SMALL, TileHeight.NORMAL),
     // lights carry a name, a warmth row and a brightness bar — on a full-height
     // tile that's a third of a panel for three lines. Half height, with the
     // warmth dots riding in the head row
@@ -102,7 +103,7 @@ private val DEFAULT_SIZES = mapOf(
 // no amount of sizing makes packRow pair them. The second key is pulled up
 // next to the first and adopts its row.
 internal val DEFAULT_PAIRS = listOf(
-    "a:Curtain" to "s:192.168.68.56:1",
+    "a:Curtain" to "s:ShellyPlus2PM-08F9E0FCEF3C:1",
 )
 
 // Window coverings that travel VERTICALLY — a roller shutter comes down from
@@ -110,7 +111,7 @@ internal val DEFAULT_PAIRS = listOf(
 // protocol says which a device is (the same Shelly roller firmware drives
 // both, and HomeKit's WindowCovering has no orientation), so it's a per-device
 // fact like the room assignments above.
-internal val DEFAULT_VERTICAL_COVERS = setOf("s:192.168.68.56:1")
+internal val DEFAULT_VERTICAL_COVERS = setOf("s:ShellyPlus2PM-08F9E0FCEF3C:1")
 
 // fine-grained per-tile width trim (±15 % etc.) that the coarse S/M/L unit
 // system can't express; applied as a multiplier on the tile's unit width.
@@ -130,20 +131,10 @@ private val STALE_SAVED_SIZES = mapOf(
     // v1.1.25: the purifier's Half height only made sense while the split-off
     // air-quality tile shared its column
     "a:Mi Air Purifier" to listOf(TileSizeCfg(TileWidth.SMALL, TileHeight.HALF)),
-    // v1.1.31: the shutter went tall and narrow, the curtain a size narrower,
-    // and the two lights half height. Each list is the size that install was
-    // carrying before — a size deliberately picked since then is left alone
-    "a:Curtain" to listOf(
-        TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
-        TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
-    ),
-    "s:192.168.68.56:1" to listOf(
-        TileSizeCfg(TileWidth.LARGE, TileHeight.HALF),
-        TileSizeCfg(TileWidth.MEDIUM, TileHeight.HALF),
-        TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL),
-    ),
-    "g:color-a01f7d|color-a575ef" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL)),
-    "a:ceilb-4dc114" to listOf(TileSizeCfg(TileWidth.MEDIUM, TileHeight.NORMAL)),
+    // NOTE: v1.1.31 briefly listed the curtain, the roller and the two lights
+    // here to force them onto new default sizes. Those entries are gone: they
+    // were a one-time migration, and leaving them in meant a size the user
+    // deliberately chose (or restored) was silently overridden forever.
 )
 
 data class YeelightCfg(val ip: String, val name: String)

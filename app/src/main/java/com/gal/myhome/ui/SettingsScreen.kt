@@ -515,7 +515,7 @@ fun SettingsScreen(vm: DashboardViewModel, onBack: () -> Unit) {
 
             /* ---- layout export ---- */
             item { SectionHeader("Layout") }
-            item { LayoutExportRow(prefs) }
+            item { LayoutExportRow(prefs, vm) }
 
             /* ---- updates ---- */
             item { SectionHeader("Updates") }
@@ -676,9 +676,12 @@ private fun RoomDropdown(current: Room?, onSelect: (Room) -> Unit) {
    by hand (to copy to another panel, or to hand to someone debugging the
    layout without physical access). */
 @Composable
-private fun LayoutExportRow(prefs: Prefs) {
+private fun LayoutExportRow(prefs: Prefs, vm: DashboardViewModel) {
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
     var showing by remember { mutableStateOf(false) }
+    var confirmRestore by remember { mutableStateOf(false) }
+    var restoreResult by remember { mutableStateOf<String?>(null) }
     val json = remember(prefs.rooms, prefs.tileOrder, prefs.tileSizes) { prefs.layoutJson() }
 
     Column {
@@ -691,7 +694,43 @@ private fun LayoutExportRow(prefs: Prefs) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { clipboard.setText(AnnotatedString(json)) }) { Text("Copy layout") }
             OutlinedButton(onClick = { showing = true }) { Text("Show") }
+            OutlinedButton(onClick = { confirmRestore = true }) { Text("Restore from server") }
         }
+        restoreResult?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+    if (confirmRestore) {
+        AlertDialog(
+            onDismissRequest = { confirmRestore = false },
+            title = { Text("Restore layout from server?") },
+            text = {
+                Text(
+                    "This panel's current rooms, tile order and tile sizes are replaced by " +
+                        "the copy stored on the dashboard server. Use this when the panel's " +
+                        "own arrangement has gone wrong — after a device was replaced, for " +
+                        "instance. Everything else is left alone."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRestore = false
+                    scope.launch {
+                        restoreResult =
+                            if (vm.restoreLayoutFromServer()) "Layout restored from the server."
+                            else "The server has no layout stored, or it couldn't be reached."
+                    }
+                }) { Text("Restore") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRestore = false }) { Text("Cancel") }
+            },
+        )
     }
     if (showing) {
         AlertDialog(
