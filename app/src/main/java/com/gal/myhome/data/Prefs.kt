@@ -102,9 +102,11 @@ private val DEFAULT_SIZES = mapOf(
 // coverings sit in different rooms and are separated by the sensor tiles, so
 // no amount of sizing makes packRow pair them. The second key is pulled up
 // next to the first and adopts its row.
-internal val DEFAULT_PAIRS = listOf(
-    "a:Curtain" to "s:ShellyPlus2PM-08F9E0FCEF3C:1",
-)
+// (Empty today. The curtain/roller entry was removed once the panel's own
+// order put them next to each other: pairUp also hands the moved tile the
+// FIRST tile's room, which silently merged the bedroom roller into the living
+// room's row and made it impossible to start a new row at the roller.)
+internal val DEFAULT_PAIRS = listOf<Pair<String, String>>()
 
 // Window coverings that travel VERTICALLY — a roller shutter comes down from
 // the top, where the living-room curtain draws sideways. Nothing in the

@@ -707,8 +707,8 @@ private fun ClimateStrip(
                             ClimateCard(t, vm, onOpenHistory)
                         }
                     }
-                    // an odd count leaves the last card half-width otherwise
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    // an odd count (three rooms reporting, say) used to leave
+                    // a card-shaped hole next to the last one — let it span
                 }
             }
         }
@@ -937,6 +937,11 @@ private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): Lis
         // Half+Half, and — in merged small-room rows — also for Normal+Normal,
         // so two lone medium tiles (e.g. a bedroom + baby light) sit one above
         // the other instead of each stretching across a near-empty row
+        // Widths no longer have to match. They used to, and the failure was
+        // silent and baffling: a Large curtain next to a Small roller simply
+        // refused to pair, so each "Half" tile filled a whole column at full
+        // height and the row came out as slabs. The column takes the wider of
+        // the two, which is what the sizes were asking for anyway.
         val bothHalf = t.height == TileHeight.HALF && next?.height == TileHeight.HALF
         // …but only tiles light enough to survive it. Stacking halves a tile's
         // height, and the AC (a mode dropdown, a fan row and a setpoint
@@ -945,7 +950,7 @@ private fun packRow(tiles: List<TileUi>, allowNormalStack: Boolean = false): Lis
         val bothNormal = allowNormalStack &&
             t.height == TileHeight.NORMAL && next?.height == TileHeight.NORMAL &&
             stacksWhenNormal(t) && stacksWhenNormal(next)
-        if (next != null && next.width == t.width && (bothHalf || bothNormal)) {
+        if (next != null && (bothHalf || (bothNormal && next.width == t.width))) {
             cols.add(PackedColumn(maxOf(adjUnits(t), adjUnits(next)), listOf(t, next)))
             i += 2
         } else {
@@ -2484,7 +2489,7 @@ private fun CurtainRow(
                     Modifier
                         .align(if (ctl.vertical) Alignment.BottomCenter else Alignment.CenterEnd)
                         .then(
-                            if (ctl.vertical) Modifier.offset(y = 12.dp).height(12.dp).fillMaxWidth()
+                            if (ctl.vertical) Modifier.offset(y = 6.dp).height(12.dp).fillMaxWidth()
                             else Modifier.offset(x = 12.dp).width(12.dp).fillMaxHeight()
                         )
                         .background(
@@ -2500,7 +2505,10 @@ private fun CurtainRow(
                     Modifier
                         .align(if (ctl.vertical) Alignment.BottomCenter else Alignment.CenterEnd)
                         .then(
-                            if (ctl.vertical) Modifier.offset(y = 5.dp).fillMaxWidth(0.5f).height(11.dp)
+                            // sits just inside the bottom rail rather than
+                            // straddling it: a closed shutter fills the tile,
+                            // so anything overhanging lands outside the card
+                            if (ctl.vertical) Modifier.offset(y = (-5).dp).fillMaxWidth(0.5f).height(11.dp)
                             else Modifier.offset(x = 5.dp).fillMaxHeight(0.5f).width(11.dp)
                         )
                         .shadow(3.dp, RoundedCornerShape(6.dp))
